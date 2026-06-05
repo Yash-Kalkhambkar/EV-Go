@@ -4,7 +4,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.dao.CannotAcquireLockException;
-import org.springframework.dao.DeadlockLoserDataAccessException;
+import org.springframework.dao.PessimisticLockingFailureException;
 import org.springframework.retry.RetryCallback;
 import org.springframework.retry.RetryContext;
 import org.springframework.retry.RetryListener;
@@ -23,7 +23,7 @@ import java.sql.SQLException;
  * <ul>
  *   <li>{@link SQLException} with SQLState {@code 40P01} (PostgreSQL deadlock detected)</li>
  *   <li>{@link CannotAcquireLockException} – Spring wrapper for lock timeout errors</li>
- *   <li>{@link DeadlockLoserDataAccessException} – Spring wrapper for deadlock loser</li>
+ *   <li>{@link PessimisticLockingFailureException} – Spring wrapper for pessimistic lock failures</li>
  * </ul>
  *
  * <p>Backoff schedule: 100 ms → 200 ms → 400 ms (max 3 retries, multiplier 2.0).
@@ -55,7 +55,7 @@ public class RetryConfig {
      *
      * <p>Retry policy covers:
      * <ul>
-     *   <li>{@link DeadlockLoserDataAccessException} – Spring wraps PostgreSQL 40P01</li>
+     *   <li>{@link PessimisticLockingFailureException} – Spring wraps PostgreSQL 40P01</li>
      *   <li>{@link CannotAcquireLockException} – lock wait timeout exceeded</li>
      *   <li>{@link SQLException} – raw JDBC deadlock; only retried when SQLState is {@code 40P01}</li>
      * </ul>
@@ -64,10 +64,8 @@ public class RetryConfig {
      */
     @Bean("deadlockRetryTemplate")
     public RetryTemplate deadlockRetryTemplate() {
-        // Custom retry policy that filters SQLException by SQLState
         SimpleRetryPolicy retryPolicy = new DeadlockRetryPolicy(MAX_ATTEMPTS);
 
-        // Exponential backoff: 100ms → 200ms → 400ms
         ExponentialBackOffPolicy backOffPolicy = new ExponentialBackOffPolicy();
         backOffPolicy.setInitialInterval(INITIAL_INTERVAL_MS);
         backOffPolicy.setMultiplier(BACKOFF_MULTIPLIER);
@@ -85,7 +83,7 @@ public class RetryConfig {
      * Custom retry policy that retries on deadlock-related exceptions only.
      *
      * <p>For {@link SQLException}, only retries when SQLState is {@code 40P01}
-     * (PostgreSQL deadlock detected). Spring's {@link DeadlockLoserDataAccessException}
+     * (PostgreSQL deadlock detected). Spring's {@link PessimisticLockingFailureException}
      * and {@link CannotAcquireLockException} are always retried.
      */
     private static class DeadlockRetryPolicy extends SimpleRetryPolicy {
@@ -101,8 +99,8 @@ public class RetryConfig {
                 return true;
             }
 
-            // Always retry Spring's deadlock wrappers
-            if (lastThrowable instanceof DeadlockLoserDataAccessException
+            // Always retry Spring's pessimistic lock / lock-acquisition wrappers
+            if (lastThrowable instanceof PessimisticLockingFailureException
                     || lastThrowable instanceof CannotAcquireLockException) {
                 return super.canRetry(context);
             }
@@ -127,10 +125,6 @@ public class RetryConfig {
 
     /**
      * Retry listener that logs each retry attempt with context information.
-     *
-     * <p>Logs: isolation level (if available in context), attempt number, and
-     * exception type to aid in diagnosing deadlock patterns.
-     *
      * Requirements: 2.4
      */
     private static class DeadlockRetryListener implements RetryListener {
@@ -141,11 +135,7 @@ public class RetryConfig {
                                                       Throwable throwable) {
             int attempt = context.getRetryCount();
             String exceptionType = throwable.getClass().getSimpleName();
-
-            // Extract SQLState for JDBC exceptions without compile-time dependency on driver
             String sqlState = extractSqlState(throwable);
-
-            // Retrieve isolation level if stored in context attributes
             Object isolationLevel = context.getAttribute("isolationLevel");
             String isolation = isolationLevel != null ? isolationLevel.toString() : "UNKNOWN";
 

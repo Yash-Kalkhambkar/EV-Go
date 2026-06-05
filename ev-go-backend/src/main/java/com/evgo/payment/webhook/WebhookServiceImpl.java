@@ -24,16 +24,17 @@ import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.time.Duration;
 import java.util.HexFormat;
 import java.util.Optional;
-import java.util.concurrent.TimeUnit;
 
 /**
  * Default implementation of {@link WebhookService}.
  *
  * <h2>Processing pipeline</h2>
  * <ol>
- *   <li>Verify HMAC-SHA256 signature (constant-time comparison).</li>
+ *   <li>Reject missing or blank signatures immediately.</li>
+ *   <li>Verify HMAC-SHA256 signature using constant-time comparison.</li>
  *   <li>Parse the Razorpay order ID from the JSON payload.</li>
  *   <li>Check Redis for duplicate processing (idempotency key {@code webhook:{orderId}}).</li>
  *   <li>Look up the booking by Razorpay order ID.</li>
@@ -53,12 +54,10 @@ public class WebhookServiceImpl implements WebhookService {
     private static final String WEBHOOK_KEY_PREFIX = "webhook:";
     private static final String WEBHOOK_RETRY_LIST = "webhook:retry";
     private static final String PROCESSED_VALUE = "processed";
+    private static final Duration IDEMPOTENCY_TTL = Duration.ofHours(24);
 
-    @Value("${app.razorpay.webhook-secret}")
+    @Value("${app.razorpay.webhook-secret:}")
     private String webhookSecret;
-
-    @Value("${app.webhook.idempotency-ttl-seconds:86400}")
-    private long idempotencyTtlSeconds;
 
     private final RedisTemplate<String, String> redisTemplate;
     private final BookingRepository bookingRepository;
@@ -82,107 +81,123 @@ public class WebhookServiceImpl implements WebhookService {
      */
     @Override
     public void processWebhook(String payload, String signature) {
-        // ── Step 1: Verify HMAC-SHA256 signature ─────────────────────────────
-        // Retries from WebhookRetryJob bypass re-verification (already verified on first delivery)
-        if (!RETRY_BYPASS_SIGNATURE.equals(signature)) {
-            verifySignature(payload, signature);
+        // ── Step 1: Reject missing/blank signatures ───────────────────────────
+        if (signature == null || signature.isBlank()) {
+            throw new WebhookSignatureException("Missing signature");
         }
 
-        // ── Step 2: Extract Razorpay order ID from payload ───────────────────
-        String orderId = extractOrderId(payload);
+        // ── Step 2: Verify HMAC-SHA256 signature ─────────────────────────────
+        // Retries from WebhookRetryJob bypass re-verification (already verified on first delivery)
+        if (!RETRY_BYPASS_SIGNATURE.equals(signature)) {
+            String computed = computeHmac(payload, webhookSecret);
+            if (!MessageDigest.isEqual(
+                    computed.getBytes(StandardCharsets.UTF_8),
+                    signature.getBytes(StandardCharsets.UTF_8))) {
+                log.warn("Webhook signature mismatch for received signature={}", signature);
+                throw new WebhookSignatureException("Invalid signature");
+            }
+        }
 
-        // ── Step 3: Idempotency check ─────────────────────────────────────────
+        // ── Step 3: Extract Razorpay order ID from payload ───────────────────
+        String orderId = extractOrderId(payload);
+        if (orderId == null) {
+            log.warn("Could not extract order_id from webhook payload, ignoring");
+            return;
+        }
+
+        // ── Step 4: Idempotency check ─────────────────────────────────────────
         String idempotencyKey = WEBHOOK_KEY_PREFIX + orderId;
         String cached = redisTemplate.opsForValue().get(idempotencyKey);
         if (cached != null) {
-            log.info("Duplicate webhook received for orderId={}, skipping", orderId);
+            log.info("Duplicate webhook, skipping orderId={}", orderId);
             return;
         }
 
-        // ── Step 4: Find booking ──────────────────────────────────────────────
+        // ── Step 5: Find booking ──────────────────────────────────────────────
         Optional<Booking> bookingOpt = bookingRepository.findByRazorpayOrderId(orderId);
         if (bookingOpt.isEmpty()) {
-            log.warn("Booking not found for razorpayOrderId={}, queuing for retry", orderId);
             redisTemplate.opsForList().rightPush(WEBHOOK_RETRY_LIST, orderId);
+            log.warn("Booking not found for orderId={}, queued for retry", orderId);
             return;
         }
 
-        // ── Steps 5-6: Transactional confirmation ─────────────────────────────
-        confirmBookingTransactional(bookingOpt.get(), orderId);
+        // ── Step 6: Transactional confirmation ────────────────────────────────
+        Booking booking = confirmBookingTransactional(bookingOpt.get(), orderId, idempotencyKey);
+        if (booking == null) {
+            // Already confirmed — idempotency key was stored inside the transaction
+            return;
+        }
 
         // ── Step 7: Store idempotency marker in Redis ─────────────────────────
-        redisTemplate.opsForValue().set(idempotencyKey, PROCESSED_VALUE, idempotencyTtlSeconds, TimeUnit.SECONDS);
+        redisTemplate.opsForValue().set(idempotencyKey, PROCESSED_VALUE, IDEMPOTENCY_TTL);
 
-        log.info("AUDIT: webhook processed for booking {}, orderId={}", bookingOpt.get().getId(), orderId);
+        // ── Step 8: Audit log ─────────────────────────────────────────────────
+        log.info("AUDIT: webhook processed for bookingId={}, orderId={}", booking.getId(), orderId);
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────
 
     /**
-     * Verifies the HMAC-SHA256 signature using a constant-time comparison to
-     * prevent timing-based attacks.
+     * Computes an HMAC-SHA256 digest of {@code data} using {@code secret} and
+     * returns the result as a lowercase hex string.
      *
-     * @param payload   raw webhook body
-     * @param signature hex-encoded signature from the {@code X-Razorpay-Signature} header
-     * @throws WebhookSignatureException if the signature does not match
+     * @param data   the message to sign
+     * @param secret the signing key
+     * @return lowercase hex-encoded HMAC-SHA256 digest
+     * @throws RuntimeException if the JVM does not support HmacSHA256
      *
      * Requirements: 4.1
      */
-    private void verifySignature(String payload, String signature) {
+    private String computeHmac(String data, String secret) {
         try {
             Mac mac = Mac.getInstance(HMAC_ALGORITHM);
             SecretKeySpec keySpec = new SecretKeySpec(
-                    webhookSecret.getBytes(StandardCharsets.UTF_8), HMAC_ALGORITHM);
+                    secret.getBytes(StandardCharsets.UTF_8), HMAC_ALGORITHM);
             mac.init(keySpec);
-
-            byte[] computedBytes = mac.doFinal(payload.getBytes(StandardCharsets.UTF_8));
-            String computedHex = HexFormat.of().formatHex(computedBytes);
-
-            byte[] computedHexBytes = computedHex.getBytes(StandardCharsets.UTF_8);
-            byte[] signatureBytes = signature.getBytes(StandardCharsets.UTF_8);
-
-            // Constant-time comparison to prevent timing attacks
-            if (!MessageDigest.isEqual(computedHexBytes, signatureBytes)) {
-                log.warn("Webhook signature mismatch: expected={}, received={}", computedHex, signature);
-                throw new WebhookSignatureException("Webhook signature verification failed");
-            }
-
-        } catch (WebhookSignatureException ex) {
-            throw ex;
+            byte[] digest = mac.doFinal(data.getBytes(StandardCharsets.UTF_8));
+            return HexFormat.of().formatHex(digest); // lowercase by default
         } catch (Exception ex) {
-            throw new WebhookSignatureException("Failed to compute webhook HMAC signature", ex);
+            throw new RuntimeException("Failed to compute HMAC-SHA256", ex);
         }
     }
 
     /**
      * Parses the Razorpay order ID from the webhook JSON payload.
      *
-     * <p>Expected path: {@code payload.payment.entity.order_id}
+     * <p>Primary path: {@code payload → "payload" → "payment" → "entity" → "order_id"}<br>
+     * Fallback path: {@code payload → "order_id"}
      *
      * @param payload raw JSON body
-     * @return the Razorpay order ID
-     * @throws IllegalArgumentException if the order ID cannot be extracted
+     * @return the Razorpay order ID, or {@code null} if not found
      *
      * Requirements: 4.3
      */
     private String extractOrderId(String payload) {
         try {
             JsonNode root = objectMapper.readTree(payload);
+
+            // Primary path: nested Razorpay webhook structure
             JsonNode orderIdNode = root
                     .path("payload")
                     .path("payment")
                     .path("entity")
                     .path("order_id");
 
-            if (orderIdNode.isMissingNode() || orderIdNode.isNull()) {
-                throw new IllegalArgumentException("order_id not found in webhook payload");
+            if (!orderIdNode.isMissingNode() && !orderIdNode.isNull()) {
+                return orderIdNode.asText();
             }
-            return orderIdNode.asText();
 
-        } catch (IllegalArgumentException ex) {
-            throw ex;
+            // Fallback: top-level order_id
+            JsonNode topLevel = root.path("order_id");
+            if (!topLevel.isMissingNode() && !topLevel.isNull()) {
+                return topLevel.asText();
+            }
+
+            return null;
+
         } catch (Exception ex) {
-            throw new IllegalArgumentException("Failed to parse webhook payload", ex);
+            log.warn("Failed to parse webhook payload for order_id extraction", ex);
+            return null;
         }
     }
 
@@ -190,13 +205,25 @@ public class WebhookServiceImpl implements WebhookService {
      * Atomically confirms the booking, marks the slot as BOOKED, and creates a
      * Payment record. All changes are committed in a single transaction.
      *
-     * @param booking the booking to confirm
-     * @param orderId the Razorpay order ID (used for the Payment record)
+     * <p>If the booking is already CONFIRMED this method stores the idempotency
+     * key and returns {@code null} to signal that no further action is needed.
+     *
+     * @param booking        the booking to confirm
+     * @param orderId        the Razorpay order ID (used for the Payment record)
+     * @param idempotencyKey the Redis key to mark as processed on early-exit
+     * @return the confirmed booking, or {@code null} if it was already confirmed
      *
      * Requirements: 4.2, 4.5
      */
     @Transactional
-    protected void confirmBookingTransactional(Booking booking, String orderId) {
+    protected Booking confirmBookingTransactional(Booking booking, String orderId, String idempotencyKey) {
+        // Guard: booking already confirmed (idempotent re-delivery)
+        if (booking.getStatus() == BookingStatus.CONFIRMED) {
+            log.info("Booking already confirmed for bookingId={}, orderId={}", booking.getId(), orderId);
+            redisTemplate.opsForValue().set(idempotencyKey, PROCESSED_VALUE, IDEMPOTENCY_TTL);
+            return null;
+        }
+
         // Validate and apply booking state transition: PENDING → CONFIRMED
         bookingStateMachine.validate(booking.getStatus(), BookingStatus.CONFIRMED);
         booking.setStatus(BookingStatus.CONFIRMED);
@@ -212,10 +239,13 @@ public class WebhookServiceImpl implements WebhookService {
                 .razorpayOrderId(orderId)
                 .amount(booking.getTotalAmount())
                 .status(PaymentStatus.SUCCESS)
+                .currency("INR")
                 .build();
 
         bookingRepository.save(booking);
         slotRepository.save(slot);
         paymentRepository.save(payment);
+
+        return booking;
     }
 }

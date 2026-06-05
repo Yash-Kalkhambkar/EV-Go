@@ -17,7 +17,7 @@ import io.micrometer.core.instrument.MeterRegistry;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.CannotAcquireLockException;
-import org.springframework.dao.DeadlockLoserDataAccessException;
+import org.springframework.dao.PessimisticLockingFailureException;
 import org.springframework.retry.annotation.Backoff;
 import org.springframework.retry.annotation.Retryable;
 import org.springframework.stereotype.Service;
@@ -79,7 +79,7 @@ public class BookingServiceImpl implements BookingService {
      */
     @Override
     @Retryable(
-            retryFor  = {DeadlockLoserDataAccessException.class, CannotAcquireLockException.class},
+            retryFor  = {PessimisticLockingFailureException.class, CannotAcquireLockException.class},
             maxAttempts = 3,
             backoff   = @Backoff(delay = 100, multiplier = 2, maxDelay = 400)
     )

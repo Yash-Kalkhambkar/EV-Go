@@ -6,21 +6,13 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 /**
- * REST controller that receives Razorpay webhook events.
+ * Handles incoming Razorpay webhook events.
  *
- * <p>Exposes a single endpoint:
- * <pre>POST /api/webhooks/razorpay</pre>
- *
- * <p>The raw request body is consumed as a {@code String} so that the exact bytes
- * used by Razorpay to compute the HMAC-SHA256 signature are preserved. Any JSON
- * parsing happens downstream in {@link WebhookService}.
- *
- * <p>Response codes:
- * <ul>
- *   <li>{@code 200 OK} – webhook accepted and processed (or duplicate, silently ignored)</li>
- *   <li>{@code 401 Unauthorized} – HMAC signature verification failed</li>
- *   <li>{@code 500 Internal Server Error} – unexpected processing error</li>
- * </ul>
+ * POST /api/webhooks/razorpay
+ *   - Reads raw body as String
+ *   - Extracts X-Razorpay-Signature header
+ *   - Delegates to WebhookService for signature verification and processing
+ *   - Returns 200 OK on success, 401 on bad signature, 500 on processing error
  *
  * Requirements: 4.1, 4.6
  */
@@ -32,29 +24,22 @@ public class WebhookController {
 
     private final WebhookService webhookService;
 
-    /**
-     * Handles an incoming Razorpay webhook event.
-     *
-     * @param payload   raw JSON body sent by Razorpay
-     * @param signature value of the {@code X-Razorpay-Signature} header
-     * @return {@code 200 OK} on success, {@code 401} on bad signature, {@code 500} on error
-     */
     @PostMapping(value = "/razorpay", consumes = "application/json")
-    public ResponseEntity<Void> handleRazorpayWebhook(
+    public ResponseEntity<String> handleRazorpayWebhook(
             @RequestBody String payload,
-            @RequestHeader("X-Razorpay-Signature") String signature) {
+            @RequestHeader(value = "X-Razorpay-Signature", required = false) String signature) {
+
+        log.info("Received Razorpay webhook, signaturePresent={}", signature != null);
 
         try {
             webhookService.processWebhook(payload, signature);
-            return ResponseEntity.ok().build();
-
-        } catch (WebhookSignatureException ex) {
-            log.warn("Webhook signature verification failed: {}", ex.getMessage());
-            return ResponseEntity.status(401).build();
-
-        } catch (Exception ex) {
-            log.error("Unexpected error processing Razorpay webhook", ex);
-            return ResponseEntity.status(500).build();
+            return ResponseEntity.ok("OK");
+        } catch (WebhookSignatureException e) {
+            log.warn("Webhook signature verification failed: {}", e.getMessage());
+            return ResponseEntity.status(401).body("Signature verification failed");
+        } catch (Exception e) {
+            log.error("Webhook processing error: {}", e.getMessage(), e);
+            return ResponseEntity.status(500).body("Processing error");
         }
     }
 }
