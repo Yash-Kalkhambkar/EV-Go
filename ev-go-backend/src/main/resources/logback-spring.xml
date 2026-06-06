@@ -1,81 +1,114 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
   EV GO – Structured JSON Logging Configuration
-  Requirements: 22.1 (JSON fields), 22.2 (correlation ID), 22.4 (sensitive data masking)
+  Requirements:
+    22.1 – JSON log output with timestamp, level, logger, message, trace_id, span_id, user_id
+    22.2 – correlation_id included in every log entry
+    22.4 – sensitive data masking for passwords, tokens, payment details
 
   Profiles:
-    dev  → console appender (human-readable JSON, coloured in IDE)
-    prod → rolling file appender (JSON, consumed by Cloud Logging agent)
-    default (no profile) → console appender
+    dev        → console appender (JSON to stdout)
+    prod       → rolling file appender (JSON, tailed by Cloud Logging agent)
+    (default)  → console appender
 -->
 <configuration scan="true" scanPeriod="30 seconds">
 
     <!-- ================================================================
          Properties
          ================================================================ -->
-    <springProperty scope="context" name="APP_NAME"    source="spring.application.name" defaultValue="ev-go-backend"/>
-    <springProperty scope="context" name="APP_ENV"     source="APP_ENV"                 defaultValue="local"/>
-    <springProperty scope="context" name="LOG_DIR"     source="LOG_DIR"                 defaultValue="logs"/>
+    <springProperty scope="context" name="APP_NAME" source="spring.application.name"
+                    defaultValue="ev-go-backend"/>
+    <springProperty scope="context" name="APP_ENV"  source="APP_ENV"
+                    defaultValue="local"/>
+    <springProperty scope="context" name="LOG_DIR"  source="LOG_DIR"
+                    defaultValue="logs"/>
 
     <!-- ================================================================
          Sensitive-data masking converter
-         Requirements: 22.3, 22.4, 22.5 – mask passwords, tokens, payment details, card numbers
-         Registered as conversionRule so %maskedMessage can be used in patterns.
+         Requirements: 22.3, 22.4, 22.5 – registered so %maskedMessage
+         can also be used in plain-text patterns (e.g. dev console).
+         The MaskingMessageJsonProvider uses the same logic for JSON output.
          ================================================================ -->
     <conversionRule conversionWord="maskedMessage"
                     converterClass="com.evgo.filter.SensitiveDataMaskingConverter"/>
 
     <!-- ================================================================
-         Logstash JSON Encoder – shared configuration
-         Requirements: 22.1 – timestamp, level, logger, message, trace_id, span_id, user_id
+         Shared encoder snippet – defined once, referenced by both appenders.
+
+         Using LoggingEventCompositeJsonEncoder so we can swap in our
+         MaskingMessageJsonProvider in place of the default MessageJsonProvider.
+         This ensures sensitive data is masked before the message reaches any
+         log sink (stdout or file).
+
+         MDC fields (trace_id, span_id, user_id, correlation_id) are written
+         by MdcJsonProvider. The OTel Java agent populates trace_id and span_id
+         automatically; MdcFilter populates correlation_id and user_id.
+
+         Requirements: 22.1 (JSON fields), 22.2 (correlation ID), 22.4 (masking)
          ================================================================ -->
+
+    <!-- Console appender ─────────────────────────────────────────── -->
     <appender name="CONSOLE_JSON" class="ch.qos.logback.core.ConsoleAppender">
-        <encoder class="net.logstash.logback.encoder.LogstashEncoder">
-            <!-- Standard fields -->
-            <timestampPattern>yyyy-MM-dd'T'HH:mm:ss.SSS'Z'</timestampPattern>
-            <timeZone>UTC</timeZone>
+        <encoder class="net.logstash.logback.encoder.LoggingEventCompositeJsonEncoder">
+            <providers>
+                <!-- timestamp – Req 22.1 -->
+                <timestamp>
+                    <fieldName>timestamp</fieldName>
+                    <pattern>yyyy-MM-dd'T'HH:mm:ss.SSS'Z'</pattern>
+                    <timeZone>UTC</timeZone>
+                </timestamp>
 
-            <!-- Rename default fields to match Cloud Logging conventions -->
-            <fieldNames>
-                <timestamp>timestamp</timestamp>
-                <version>[ignore]</version>
-                <message>message</message>
-                <logger>logger</logger>
-                <thread>thread</thread>
-                <level>level</level>
-                <levelValue>[ignore]</levelValue>
-            </fieldNames>
+                <!-- log level -->
+                <logLevel>
+                    <fieldName>level</fieldName>
+                </logLevel>
 
-            <!-- Include MDC fields: trace_id, span_id, user_id, correlation_id -->
-            <!-- MDC is populated by MdcFilter (Task 9.1) -->
-            <includeMdcKeyName>trace_id</includeMdcKeyName>
-            <includeMdcKeyName>span_id</includeMdcKeyName>
-            <includeMdcKeyName>user_id</includeMdcKeyName>
-            <includeMdcKeyName>correlation_id</includeMdcKeyName>
-            <includeMdcKeyName>booking_id</includeMdcKeyName>
-            <includeMdcKeyName>station_id</includeMdcKeyName>
+                <!-- logger name -->
+                <loggerName>
+                    <fieldName>logger</fieldName>
+                    <shortenedLoggerNameLength>36</shortenedLoggerNameLength>
+                </loggerName>
 
-            <!-- Static fields added to every log entry -->
-            <customFields>{"app":"${APP_NAME}","env":"${APP_ENV}"}</customFields>
+                <!-- thread name -->
+                <threadName>
+                    <fieldName>thread</fieldName>
+                </threadName>
 
-            <!-- Include stack traces in ERROR logs – Req 22.5 -->
-            <throwableConverter class="net.logstash.logback.stacktrace.ShortenedThrowableConverter">
-                <maxDepthPerCause>20</maxDepthPerCause>
-                <maxLength>4096</maxLength>
-                <shortenedClassNameLength>36</shortenedClassNameLength>
-                <rootCauseFirst>true</rootCauseFirst>
-            </throwableConverter>
+                <!-- message with sensitive-data masking – Req 22.4 -->
+                <provider class="com.evgo.filter.MaskingMessageJsonProvider"/>
 
-            <!-- Mask sensitive data in the message field – Req 22.3, 22.4, 22.5 -->
-            <!-- The maskedMessage conversionRule applies SensitiveDataMaskingConverter -->
-            <messageJsonProvider class="net.logstash.logback.composite.loggingevent.MessageJsonProvider"/>
-            <provider class="net.logstash.logback.composite.loggingevent.MdcJsonProvider"/>
+                <!-- MDC: trace_id, span_id, user_id, correlation_id – Req 22.1, 22.2 -->
+                <mdc>
+                    <includeMdcKeyName>trace_id</includeMdcKeyName>
+                    <includeMdcKeyName>span_id</includeMdcKeyName>
+                    <includeMdcKeyName>user_id</includeMdcKeyName>
+                    <includeMdcKeyName>correlation_id</includeMdcKeyName>
+                    <includeMdcKeyName>booking_id</includeMdcKeyName>
+                    <includeMdcKeyName>station_id</includeMdcKeyName>
+                </mdc>
+
+                <!-- stack trace in ERROR logs – Req 22.5 -->
+                <throwableRootCauseClassName>
+                    <useSimpleClassName>false</useSimpleClassName>
+                </throwableRootCauseClassName>
+                <stackTrace>
+                    <fieldName>stack_trace</fieldName>
+                    <throwableConverter
+                            class="net.logstash.logback.stacktrace.ShortenedThrowableConverter">
+                        <maxDepthPerCause>20</maxDepthPerCause>
+                        <maxLength>4096</maxLength>
+                        <shortenedClassNameLength>36</shortenedClassNameLength>
+                        <rootCauseFirst>true</rootCauseFirst>
+                    </throwableConverter>
+                </stackTrace>
+
+                <!-- static context fields -->
+                <globalCustomFields>{"app":"${APP_NAME}","env":"${APP_ENV}"}</globalCustomFields>
+            </providers>
         </encoder>
     </appender>
 
-    <!-- ================================================================
-         File appender (prod profile) – rolling JSON logs
-         ================================================================ -->
+    <!-- File appender (prod) – rolling JSON logs ────────────────── -->
     <appender name="FILE_JSON" class="ch.qos.logback.core.rolling.RollingFileAppender">
         <file>${LOG_DIR}/ev-go.log</file>
         <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
@@ -88,31 +121,54 @@
             <maxHistory>30</maxHistory>
             <totalSizeCap>3GB</totalSizeCap>
         </rollingPolicy>
-        <encoder class="net.logstash.logback.encoder.LogstashEncoder">
-            <timestampPattern>yyyy-MM-dd'T'HH:mm:ss.SSS'Z'</timestampPattern>
-            <timeZone>UTC</timeZone>
-            <fieldNames>
-                <timestamp>timestamp</timestamp>
-                <version>[ignore]</version>
-                <message>message</message>
-                <logger>logger</logger>
-                <thread>thread</thread>
-                <level>level</level>
-                <levelValue>[ignore]</levelValue>
-            </fieldNames>
-            <includeMdcKeyName>trace_id</includeMdcKeyName>
-            <includeMdcKeyName>span_id</includeMdcKeyName>
-            <includeMdcKeyName>user_id</includeMdcKeyName>
-            <includeMdcKeyName>correlation_id</includeMdcKeyName>
-            <includeMdcKeyName>booking_id</includeMdcKeyName>
-            <includeMdcKeyName>station_id</includeMdcKeyName>
-            <customFields>{"app":"${APP_NAME}","env":"${APP_ENV}"}</customFields>
-            <throwableConverter class="net.logstash.logback.stacktrace.ShortenedThrowableConverter">
-                <maxDepthPerCause>20</maxDepthPerCause>
-                <maxLength>4096</maxLength>
-                <shortenedClassNameLength>36</shortenedClassNameLength>
-                <rootCauseFirst>true</rootCauseFirst>
-            </throwableConverter>
+        <encoder class="net.logstash.logback.encoder.LoggingEventCompositeJsonEncoder">
+            <providers>
+                <timestamp>
+                    <fieldName>timestamp</fieldName>
+                    <pattern>yyyy-MM-dd'T'HH:mm:ss.SSS'Z'</pattern>
+                    <timeZone>UTC</timeZone>
+                </timestamp>
+                <logLevel>
+                    <fieldName>level</fieldName>
+                </logLevel>
+                <loggerName>
+                    <fieldName>logger</fieldName>
+                    <shortenedLoggerNameLength>36</shortenedLoggerNameLength>
+                </loggerName>
+                <threadName>
+                    <fieldName>thread</fieldName>
+                </threadName>
+
+                <!-- message with sensitive-data masking – Req 22.4 -->
+                <provider class="com.evgo.filter.MaskingMessageJsonProvider"/>
+
+                <!-- MDC fields – Req 22.1, 22.2 -->
+                <mdc>
+                    <includeMdcKeyName>trace_id</includeMdcKeyName>
+                    <includeMdcKeyName>span_id</includeMdcKeyName>
+                    <includeMdcKeyName>user_id</includeMdcKeyName>
+                    <includeMdcKeyName>correlation_id</includeMdcKeyName>
+                    <includeMdcKeyName>booking_id</includeMdcKeyName>
+                    <includeMdcKeyName>station_id</includeMdcKeyName>
+                </mdc>
+
+                <!-- stack traces in ERROR logs – Req 22.5 -->
+                <throwableRootCauseClassName>
+                    <useSimpleClassName>false</useSimpleClassName>
+                </throwableRootCauseClassName>
+                <stackTrace>
+                    <fieldName>stack_trace</fieldName>
+                    <throwableConverter
+                            class="net.logstash.logback.stacktrace.ShortenedThrowableConverter">
+                        <maxDepthPerCause>20</maxDepthPerCause>
+                        <maxLength>4096</maxLength>
+                        <shortenedClassNameLength>36</shortenedClassNameLength>
+                        <rootCauseFirst>true</rootCauseFirst>
+                    </throwableConverter>
+                </stackTrace>
+
+                <globalCustomFields>{"app":"${APP_NAME}","env":"${APP_ENV}"}</globalCustomFields>
+            </providers>
         </encoder>
     </appender>
 

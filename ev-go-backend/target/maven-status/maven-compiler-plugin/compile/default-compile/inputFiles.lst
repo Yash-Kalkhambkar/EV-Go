@@ -37,6 +37,7 @@ E:\Work\EVCharging\ev-go-backend\src\main\java\com\evgo\exception\LockExpiryExce
 E:\Work\EVCharging\ev-go-backend\src\main\java\com\evgo\exception\PaymentFailedException.java
 E:\Work\EVCharging\ev-go-backend\src\main\java\com\evgo\exception\ResourceNotFoundException.java
 E:\Work\EVCharging\ev-go-backend\src\main\java\com\evgo\exception\SlotUnavailableException.java
+E:\Work\EVCharging\ev-go-backend\src\main\java\com\evgo\filter\MaskingMessageJsonProvider.java
 E:\Work\EVCharging\ev-go-backend\src\main\java\com\evgo\filter\MdcFilter.java
 E:\Work\EVCharging\ev-go-backend\src\main\java\com\evgo\filter\SensitiveDataMaskingConverter.java
 E:\Work\EVCharging\ev-go-backend\src\main\java\com\evgo\locking\DistributedLockService.java

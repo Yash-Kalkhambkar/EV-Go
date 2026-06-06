@@ -61,6 +61,7 @@ com\evgo\user\UserRepository.class
 com\evgo\exception\GlobalExceptionHandler.class
 com\evgo\websocket\SlotBroadcaster$SlotUpdateMessage.class
 com\evgo\slot\SlotStatus.class
+com\evgo\filter\MaskingMessageJsonProvider.class
 com\evgo\station\Station.class
 com\evgo\websocket\WebSocketPollingFallback.class
 com\evgo\slot\SlotRepository.class

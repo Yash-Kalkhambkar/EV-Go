@@ -4,7 +4,8 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
 import org.springframework.core.annotation.Order;
 import org.springframework.lang.NonNull;
@@ -43,10 +44,11 @@ import java.util.UUID;
  *
  * <p>Requirements: 22.2 (correlation ID propagation), 22.6 (MDC async propagation)
  */
-@Slf4j
 @Component
 @Order(1)
 public class MdcFilter extends OncePerRequestFilter {
+
+    private static final Logger log = LoggerFactory.getLogger(MdcFilter.class);
 
     public static final String MDC_CORRELATION_ID = "correlation_id";
     public static final String MDC_TRACE_ID       = "trace_id";
