@@ -1,5 +1,7 @@
 package com.evgo.station;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -46,4 +48,10 @@ public interface StationRepository extends JpaRepository<Station, Long> {
             @Param("minLng") BigDecimal minLng,
             @Param("maxLng") BigDecimal maxLng
     );
+    
+    /**
+     * Find stations by active status with pagination.
+     * Used by admin dashboard for filtering.
+     */
+    Page<Station> findByIsActive(boolean isActive, Pageable pageable);
 }

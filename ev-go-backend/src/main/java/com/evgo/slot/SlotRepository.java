@@ -7,6 +7,9 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDate;
+import java.time.LocalTime;
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -39,4 +42,53 @@ public interface SlotRepository extends JpaRepository<Slot, Long> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT s FROM Slot s WHERE s.id = :id")
     Optional<Slot> findByIdWithLock(@Param("id") Long id);
+    
+    /**
+     * Find all slots for a station on a specific date.
+     * Used for availability queries and admin dashboards.
+     * 
+     * @param stationId Station ID
+     * @param date Slot date
+     * @return List of slots for this date
+     */
+    @Query("""
+            SELECT s FROM Slot s
+            WHERE s.station.id = :stationId
+              AND s.slotDate = :date
+            ORDER BY s.startTime ASC
+            """)
+    List<Slot> findByStationAndDate(
+            @Param("stationId") Long stationId,
+            @Param("date") LocalDate date
+    );
+    
+    /**
+     * Find available slots (status = AVAILABLE) for a station on a date.
+     * 
+     * @param stationId Station ID
+     * @param date Slot date
+     * @return List of available slots
+     */
+    @Query("""
+            SELECT s FROM Slot s
+            WHERE s.station.id = :stationId
+              AND s.slotDate = :date
+              AND s.status = com.evgo.slot.SlotStatus.AVAILABLE
+            ORDER BY s.startTime ASC
+            """)
+    List<Slot> findAvailableByStationAndDate(
+            @Param("stationId") Long stationId,
+            @Param("date") LocalDate date
+    );
+    
+    /**
+     * Check if a slot already exists for a station at a specific date/time.
+     * Used during slot generation to avoid duplicates (idempotency).
+     * 
+     * @param stationId Station ID
+     * @param slotDate Slot date
+     * @param startTime Start time
+     * @return true if slot exists
+     */
+    boolean existsByStationIdAndSlotDateAndStartTime(Long stationId, LocalDate slotDate, LocalTime startTime);
 }

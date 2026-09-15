@@ -20,4 +20,12 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
      * @return the payment for the booking, if any
      */
     Optional<Payment> findByBookingId(Long bookingId);
+    
+    /**
+     * Finds a payment by Razorpay payment ID (for idempotency checks).
+     *
+     * @param razorpayPaymentId Razorpay payment ID
+     * @return the payment, if any
+     */
+    Optional<Payment> findByRazorpayPaymentId(String razorpayPaymentId);
 }
