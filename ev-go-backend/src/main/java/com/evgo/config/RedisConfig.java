@@ -4,25 +4,33 @@ import org.redisson.Redisson;
 import org.redisson.api.RedissonClient;
 import org.redisson.config.Config;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cache.CacheManager;
+import org.springframework.cache.annotation.EnableCaching;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.data.redis.cache.RedisCacheConfiguration;
+import org.springframework.data.redis.cache.RedisCacheManager;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.connection.RedisStandaloneConfiguration;
 import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
 import org.springframework.data.redis.core.RedisTemplate;
-import org.springframework.data.redis.listener.RedisMessageListenerContainer;
+import org.springframework.data.redis.serializer.GenericJackson2JsonRedisSerializer;
+import org.springframework.data.redis.serializer.RedisSerializationContext;
 import org.springframework.data.redis.serializer.StringRedisSerializer;
 import org.springframework.util.StringUtils;
+
+import java.time.Duration;
 
 /**
  * Redis configuration providing:
  * <ul>
- *   <li>{@link RedissonClient} – distributed locking via Redisson (Req 1.1, 1.3)</li>
- *   <li>{@link RedisTemplate} – general-purpose caching operations (Req 9.1)</li>
- *   <li>{@link RedisMessageListenerContainer} – Pub/Sub for WebSocket backplane (Req 7.1)</li>
+ *   <li>{@link RedissonClient} – distributed locking via Redisson</li>
+ *   <li>{@link RedisTemplate} – general-purpose caching operations</li>
+ *   <li>{@link CacheManager} – Spring Cache abstraction with TTL</li>
  * </ul>
  */
 @Configuration
+@EnableCaching
 public class RedisConfig {
 
     @Value("${spring.data.redis.host:localhost}")
@@ -37,16 +45,8 @@ public class RedisConfig {
     // ── Redisson ──────────────────────────────────────────────────────────────
 
     /**
-     * Redisson client used for distributed locking (RLock) and Bucket4j rate limiting.
-     *
-     * <p>Connection pool is sized to match the HikariCP pool so that lock operations
-     * never queue behind cache operations:
-     * <ul>
-     *   <li>connectionPoolSize: 20 – matches HikariCP maximum-pool-size</li>
-     *   <li>connectionMinimumIdleSize: 5 – matches HikariCP minimum-idle</li>
-     * </ul>
-     *
-     * Requirements: 1.1 (distributed lock), 1.3 (Redis connection pool)
+     * Redisson client used for distributed locking (RLock).
+     * Connection pool sized for concurrent lock operations.
      */
     @Bean(destroyMethod = "shutdown")
     public RedissonClient redissonClient() {
@@ -73,22 +73,39 @@ public class RedisConfig {
     // ── RedisTemplate ─────────────────────────────────────────────────────────
 
     /**
-     * General-purpose {@link RedisTemplate} with String keys and String values.
-     *
-     * <p>Using String serializers throughout keeps stored data human-readable and
-     * avoids Java serialization issues across deployments.
-     *
-     * <p>Used by:
-     * <ul>
-     *   <li>Station cache (Req 9.1, 9.2)</li>
-     *   <li>Payment idempotency cache (Req 5.2)</li>
-     *   <li>Webhook deduplication cache (Req 4.2)</li>
-     *   <li>AI conversation history (Req 15.7)</li>
-     *   <li>WebSocket Pub/Sub publishing (Req 7.2)</li>
-     * </ul>
+     * General-purpose {@link RedisTemplate} with String keys and Object values.
+     * Uses JSON serialization for values (Jackson).
+     * 
+     * Used for:
+     * - Payment idempotency cache
+     * - AI conversation history
+     * - Rate limiting counters
      */
     @Bean
-    public RedisTemplate<String, String> redisTemplate(RedisConnectionFactory connectionFactory) {
+    public RedisTemplate<String, Object> redisTemplate(RedisConnectionFactory connectionFactory) {
+        RedisTemplate<String, Object> template = new RedisTemplate<>();
+        template.setConnectionFactory(connectionFactory);
+
+        StringRedisSerializer stringSerializer = new StringRedisSerializer();
+        GenericJackson2JsonRedisSerializer jsonSerializer = new GenericJackson2JsonRedisSerializer();
+
+        template.setKeySerializer(stringSerializer);
+        template.setValueSerializer(jsonSerializer);
+        template.setHashKeySerializer(stringSerializer);
+        template.setHashValueSerializer(jsonSerializer);
+
+        template.setEnableTransactionSupport(false);
+        template.afterPropertiesSet();
+
+        return template;
+    }
+
+    /**
+     * String-specific RedisTemplate for simple key-value operations.
+     * Used for rate limiting and simple caching.
+     */
+    @Bean
+    public RedisTemplate<String, String> stringRedisTemplate(RedisConnectionFactory connectionFactory) {
         RedisTemplate<String, String> template = new RedisTemplate<>();
         template.setConnectionFactory(connectionFactory);
 
@@ -98,19 +115,15 @@ public class RedisConfig {
         template.setValueSerializer(stringSerializer);
         template.setHashKeySerializer(stringSerializer);
         template.setHashValueSerializer(stringSerializer);
-        template.setDefaultSerializer(stringSerializer);
 
-        template.setEnableTransactionSupport(false); // Managed at service layer
+        template.setEnableTransactionSupport(false);
         template.afterPropertiesSet();
 
         return template;
     }
 
     /**
-     * Lettuce connection factory used by {@link RedisTemplate}.
-     *
-     * <p>Redisson manages its own connection pool; this factory is for Spring Data Redis
-     * operations (caching, Pub/Sub publishing).
+     * Lettuce connection factory used by RedisTemplate.
      */
     @Bean
     public LettuceConnectionFactory lettuceConnectionFactory() {
@@ -121,50 +134,42 @@ public class RedisConfig {
         return new LettuceConnectionFactory(config);
     }
 
-    // ── Redis Pub/Sub ─────────────────────────────────────────────────────────
+    // ── Spring Cache Manager ──────────────────────────────────────────────────
 
     /**
-     * Container that manages Redis Pub/Sub message listeners.
-     *
-     * <p>The {@code SlotBroadcaster} registers listeners at runtime for each station
-     * topic ({@code slot:updates:{stationId}}) as WebSocket clients subscribe.
-     * The container handles reconnection automatically on Redis failover.
-     *
-     * Requirements: 7.1 (Redis Pub/Sub backplane), 7.4 (subscription management)
+     * Spring CacheManager with Redis backend.
+     * Supports @Cacheable annotations with different TTLs per cache.
+     * 
+     * Cache configurations:
+     * - stations: 5 minute TTL (station search results)
+     * - slots: 1 minute TTL (available slots)
+     * - default: 5 minute TTL
      */
     @Bean
-    public RedisMessageListenerContainer redisMessageListenerContainer(
-            RedisConnectionFactory connectionFactory) {
+    public CacheManager cacheManager(RedisConnectionFactory connectionFactory) {
+        
+        // Default configuration: 5 minute TTL, disable null values
+        RedisCacheConfiguration defaultConfig = RedisCacheConfiguration.defaultCacheConfig()
+                .entryTtl(Duration.ofMinutes(5))
+                .disableCachingNullValues()
+                .serializeKeysWith(RedisSerializationContext.SerializationPair.fromSerializer(new StringRedisSerializer()))
+                .serializeValuesWith(RedisSerializationContext.SerializationPair.fromSerializer(new GenericJackson2JsonRedisSerializer()));
 
-        RedisMessageListenerContainer container = new RedisMessageListenerContainer();
-        container.setConnectionFactory(connectionFactory);
-
-        // Allow the container to recover from connection failures automatically
-        container.setRecoveryInterval(5000L);
-
-        // Use a dedicated thread pool so Pub/Sub processing does not block
-        // the main application thread pool
-        container.setTaskExecutor(pubSubTaskExecutor());
-
-        return container;
-    }
-
-    /**
-     * Dedicated task executor for Redis Pub/Sub message processing.
-     *
-     * <p>Sized to handle concurrent messages from multiple station topics without
-     * blocking WebSocket broadcast operations.
-     */
-    @Bean
-    public java.util.concurrent.Executor pubSubTaskExecutor() {
-        var executor = new org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor();
-        executor.setCorePoolSize(4);
-        executor.setMaxPoolSize(8);
-        executor.setQueueCapacity(100);
-        executor.setThreadNamePrefix("redis-pubsub-");
-        executor.setWaitForTasksToCompleteOnShutdown(true);
-        executor.setAwaitTerminationSeconds(10);
-        executor.initialize();
-        return executor;
+        // Specific configurations for different caches
+        return RedisCacheManager.builder(connectionFactory)
+                .cacheDefaults(defaultConfig)
+                .withCacheConfiguration("stations", 
+                        RedisCacheConfiguration.defaultCacheConfig()
+                                .entryTtl(Duration.ofMinutes(5))
+                                .disableCachingNullValues()
+                                .serializeKeysWith(RedisSerializationContext.SerializationPair.fromSerializer(new StringRedisSerializer()))
+                                .serializeValuesWith(RedisSerializationContext.SerializationPair.fromSerializer(new GenericJackson2JsonRedisSerializer())))
+                .withCacheConfiguration("slots", 
+                        RedisCacheConfiguration.defaultCacheConfig()
+                                .entryTtl(Duration.ofMinutes(1))
+                                .disableCachingNullValues()
+                                .serializeKeysWith(RedisSerializationContext.SerializationPair.fromSerializer(new StringRedisSerializer()))
+                                .serializeValuesWith(RedisSerializationContext.SerializationPair.fromSerializer(new GenericJackson2JsonRedisSerializer())))
+                .build();
     }
 }
