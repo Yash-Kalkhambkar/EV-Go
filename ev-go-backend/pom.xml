@@ -26,11 +26,7 @@
         <java.version>21</java.version>
         <mapstruct.version>1.5.5.Final</mapstruct.version>
         <lombok.version>1.18.32</lombok.version>
-        <resilience4j.version>2.2.0</resilience4j.version>
-        <bucket4j.version>8.10.1</bucket4j.version>
         <redisson.version>3.29.0</redisson.version>
-        <opentelemetry-spring-boot.version>2.6.0</opentelemetry-spring-boot.version>
-        <logstash-logback.version>7.4</logstash-logback.version>
         <jjwt.version>0.12.5</jjwt.version>
         <razorpay.version>1.4.5</razorpay.version>
         <flyway.version>10.12.0</flyway.version>
@@ -67,13 +63,6 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>
-        </dependency>
-
-        <!-- ── Spring Retry – deadlock retry logic ── -->
-        <!-- Requirements: 2.4, 2.7 – exponential backoff on deadlock -->
-        <dependency>
-            <groupId>org.springframework.retry</groupId>
-            <artifactId>spring-retry</artifactId>
         </dependency>
 
         <!-- ── Database ── -->
@@ -114,65 +103,11 @@
             <optional>true</optional>
         </dependency>
 
-        <!-- ── Metrics: Micrometer + Prometheus ── -->
-        <dependency>
-            <groupId>io.micrometer</groupId>
-            <artifactId>micrometer-registry-prometheus</artifactId>
-        </dependency>
-
-        <!-- ── Distributed Tracing: OpenTelemetry ── -->
-        <!-- Requirements: 23.1 – OTel Spring Boot starter auto-instruments HTTP, DB, Redis -->
-        <dependency>
-            <groupId>io.opentelemetry.instrumentation</groupId>
-            <artifactId>opentelemetry-spring-boot-starter</artifactId>
-            <version>${opentelemetry-spring-boot.version}</version>
-        </dependency>
-
-        <!-- ── Resilience4j ── -->
-        <!-- Requirements: 14.1, 16.1, 17.x – circuit breaker, retry, rate limiter -->
-        <dependency>
-            <groupId>io.github.resilience4j</groupId>
-            <artifactId>resilience4j-spring-boot3</artifactId>
-            <version>${resilience4j.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>io.github.resilience4j</groupId>
-            <artifactId>resilience4j-reactor</artifactId>
-            <version>${resilience4j.version}</version>
-        </dependency>
-        <!-- AOP support required by Resilience4j annotations -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-aop</artifactId>
-        </dependency>
-
-        <!-- ── Bucket4j: distributed rate limiting ── -->
-        <!-- Requirements: 17.4 – Redis-backed sliding window rate limiter -->
-        <dependency>
-            <groupId>com.bucket4j</groupId>
-            <artifactId>bucket4j-core</artifactId>
-            <version>${bucket4j.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>com.bucket4j</groupId>
-            <artifactId>bucket4j-redis</artifactId>
-            <version>${bucket4j.version}</version>
-        </dependency>
-
         <!-- ── Redisson: distributed locking ── -->
-        <!-- Requirements: 1.1, 1.3 – Redisson replaces plain Lettuce for lock operations -->
         <dependency>
             <groupId>org.redisson</groupId>
             <artifactId>redisson-spring-boot-starter</artifactId>
             <version>${redisson.version}</version>
-        </dependency>
-
-        <!-- ── Structured Logging: Logstash encoder ── -->
-        <!-- Requirements: 22.1 – JSON log output for Cloud Logging -->
-        <dependency>
-            <groupId>net.logstash.logback</groupId>
-            <artifactId>logstash-logback-encoder</artifactId>
-            <version>${logstash-logback.version}</version>
         </dependency>
 
         <!-- ── JWT ── -->
@@ -199,6 +134,18 @@
             <groupId>com.razorpay</groupId>
             <artifactId>razorpay-java</artifactId>
             <version>${razorpay.version}</version>
+        </dependency>
+
+        <!-- ── QR Code Generation (ZXing) ── -->
+        <dependency>
+            <groupId>com.google.zxing</groupId>
+            <artifactId>core</artifactId>
+            <version>3.5.3</version>
+        </dependency>
+        <dependency>
+            <groupId>com.google.zxing</groupId>
+            <artifactId>javase</artifactId>
+            <version>3.5.3</version>
         </dependency>
 
         <!-- ── Testing ── -->
@@ -260,18 +207,5 @@
 
         </plugins>
     </build>
-
-    <!-- ===== Dependency Management for OTel BOM ===== -->
-    <dependencyManagement>
-        <dependencies>
-            <dependency>
-                <groupId>io.opentelemetry.instrumentation</groupId>
-                <artifactId>opentelemetry-instrumentation-bom</artifactId>
-                <version>${opentelemetry-spring-boot.version}</version>
-                <type>pom</type>
-                <scope>import</scope>
-            </dependency>
-        </dependencies>
-    </dependencyManagement>
 
 </project>
