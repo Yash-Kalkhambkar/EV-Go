@@ -56,8 +56,9 @@ public interface BookingService {
      *
      * @param bookingId the booking to cancel
      * @param userId    the user requesting cancellation
+     * @param reason    optional cancellation reason
      *
      * Requirements: 11.5
      */
-    void cancelBooking(Long bookingId, Long userId);
+    void cancelBooking(Long bookingId, Long userId, String reason);
 }

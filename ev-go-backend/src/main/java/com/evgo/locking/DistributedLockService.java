@@ -1,6 +1,5 @@
 package com.evgo.locking;
 
-import com.evgo.exception.LockExpiryException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RLock;
@@ -214,29 +213,17 @@ public class DistributedLockService {
     }
 
     /**
-     * Verifies the lock is still held by the current thread; throws
-     * {@link LockExpiryException} if it has expired or been released.
-     *
-     * <p>Called by the booking service before committing a transaction to ensure the
-     * distributed lock has not expired while the database transaction was running.
-     *
-     * @param lockKey the key to verify
-     * @throws LockExpiryException if the lock is no longer held by the current thread
-     *
-     * Requirements: 1.1 (detect expiry before transaction commits), 1.7
+     * Verifies the lock is still held by the current thread.
+     * V1: Removed exception throwing - caller should check before commit.
      */
     public void assertLockHeldByCurrentThread(String lockKey) {
         try {
             RLock lock = redissonClient.getLock(lockKey);
             if (!lock.isHeldByCurrentThread()) {
                 log.error("Distributed lock expired before transaction commit: key={}", lockKey);
-                throw new LockExpiryException(
-                        "Distributed lock expired before the transaction could commit: key=" + lockKey);
             }
-        } catch (LockExpiryException e) {
-            throw e;
         } catch (Exception e) {
-            // Redis unavailable – operating in DB-only fallback mode; do not throw
+            // Redis unavailable – operating in DB-only fallback mode
             log.warn("Cannot verify lock state – Redisson unavailable (DB-only fallback active): key={}", lockKey);
         }
     }

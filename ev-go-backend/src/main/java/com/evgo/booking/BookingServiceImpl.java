@@ -2,30 +2,24 @@ package com.evgo.booking;
 
 import com.evgo.booking.dto.BookingDto;
 import com.evgo.booking.dto.CreateBookingRequest;
-import com.evgo.booking.statemachine.BookingStateMachine;
 import com.evgo.exception.ResourceNotFoundException;
 import com.evgo.exception.SlotUnavailableException;
 import com.evgo.locking.DistributedLockService;
 import com.evgo.slot.Slot;
 import com.evgo.slot.SlotRepository;
 import com.evgo.slot.SlotStatus;
-import com.evgo.slot.statemachine.SlotStateMachine;
 import com.evgo.station.StationRepository;
 import com.evgo.user.User;
 import com.evgo.user.UserRepository;
-import io.micrometer.core.instrument.MeterRegistry;
+import com.evgo.websocket.BookingWebSocketHandler;
+import com.evgo.websocket.WebSocketMessage;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.dao.CannotAcquireLockException;
-import org.springframework.dao.PessimisticLockingFailureException;
-import org.springframework.retry.annotation.Backoff;
-import org.springframework.retry.annotation.Retryable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
-import java.util.concurrent.TimeUnit;
 
 /**
  * Default implementation of {@link BookingService}.
@@ -39,12 +33,6 @@ import java.util.concurrent.TimeUnit;
  *       via {@link SlotRepository#findByIdWithLock}. Acts as the correctness guarantee
  *       when Redis is unavailable (fallback mode).</li>
  * </ol>
- *
- * <h2>Retry policy</h2>
- * {@link #createBooking} is annotated with {@code @Retryable} to handle transient
- * database deadlocks with exponential back-off (100 ms → 200 ms → 400 ms, max 3 attempts).
- *
- * Requirements: 1.1, 1.6, 2.2, 2.4, 2.5, 2.7, 11.2, 11.5, 11.6
  */
 @Slf4j
 @Service
@@ -56,9 +44,7 @@ public class BookingServiceImpl implements BookingService {
     private final StationRepository      stationRepository;
     private final UserRepository         userRepository;
     private final DistributedLockService distributedLockService;
-    private final MeterRegistry          meterRegistry;
-    private final BookingStateMachine    bookingStateMachine;
-    private final SlotStateMachine       slotStateMachine;
+    private final BookingWebSocketHandler webSocketHandler;
 
     // ── Lock configuration ────────────────────────────────────────────────────
 
@@ -70,19 +56,7 @@ public class BookingServiceImpl implements BookingService {
 
     // ── createBooking ─────────────────────────────────────────────────────────
 
-    /**
-     * {@inheritDoc}
-     *
-     * <p>Retries up to 3 times on deadlock with exponential back-off.
-     *
-     * Requirements: 1.1, 1.6, 2.2, 2.4, 2.7
-     */
     @Override
-    @Retryable(
-            retryFor  = {PessimisticLockingFailureException.class, CannotAcquireLockException.class},
-            maxAttempts = 3,
-            backoff   = @Backoff(delay = 100, multiplier = 2, maxDelay = 400)
-    )
     public BookingDto createBooking(CreateBookingRequest request, Long userId) {
 
         long lockStart = System.currentTimeMillis();
@@ -92,42 +66,27 @@ public class BookingServiceImpl implements BookingService {
         boolean locked = distributedLockService.tryLock(lockKey, LOCK_WAIT_SECONDS, LOCK_LEASE_SECONDS);
         if (!locked) {
             log.warn("Slot lock contention: slotId={}, userId={}", request.slotId(), userId);
-            meterRegistry.counter("booking.lock.contention", "slotId", String.valueOf(request.slotId())).increment();
             throw new SlotUnavailableException("SLOT_CONTENTION", "Slot is being booked by another user");
         }
 
         try {
-            long lockAcquisitionMs = System.currentTimeMillis() - lockStart;
-            long txStart = System.currentTimeMillis();
-
             BookingDto result = createBookingInTransaction(request, userId);
 
-            long txDurationMs = System.currentTimeMillis() - txStart;
-
-            log.info("Booking created: bookingId={}, slotId={}, userId={}, lockAcquisitionMs={}, txDurationMs={}",
-                    result.id(), request.slotId(), userId, lockAcquisitionMs, txDurationMs);
-
-            // ── Metrics ───────────────────────────────────────────────────────
-            meterRegistry.counter("booking.created").increment();
-            meterRegistry.timer("booking.lock.acquisition.time")
-                    .record(lockAcquisitionMs, TimeUnit.MILLISECONDS);
-            meterRegistry.timer("booking.transaction.duration")
-                    .record(txDurationMs, TimeUnit.MILLISECONDS);
+            long totalDurationMs = System.currentTimeMillis() - lockStart;
+            log.info("Booking created: bookingId={}, slotId={}, userId={}, totalDurationMs={}",
+                    result.id(), request.slotId(), userId, totalDurationMs);
 
             return result;
 
         } finally {
-            long totalDurationMs = System.currentTimeMillis() - lockStart;
             distributedLockService.releaseLock(lockKey);
-            log.info("Lock released: key={}, totalDurationMs={}", lockKey, totalDurationMs);
+            log.debug("Lock released: key={}", lockKey);
         }
     }
 
     /**
      * Executes the booking creation inside a REPEATABLE_READ transaction with a
      * 5-second timeout. The slot is loaded with a pessimistic write lock (tier 2).
-     *
-     * Requirements: 2.2, 2.3
      */
     @Transactional(isolation = Isolation.REPEATABLE_READ, timeout = 5)
     protected BookingDto createBookingInTransaction(CreateBookingRequest request, Long userId) {
@@ -157,7 +116,6 @@ public class BookingServiceImpl implements BookingService {
         bookingRepository.save(booking);
 
         // Mark slot as RESERVED (payment still pending)
-        slotStateMachine.validate(slot.getStatus(), SlotStatus.RESERVED);
         slot.setStatus(SlotStatus.RESERVED);
         slotRepository.save(slot);
 
@@ -166,11 +124,6 @@ public class BookingServiceImpl implements BookingService {
 
     // ── updateBookingStatus ───────────────────────────────────────────────────
 
-    /**
-     * {@inheritDoc}
-     *
-     * Requirements: 11.2, 11.5, 11.6
-     */
     @Override
     @Transactional
     public BookingDto updateBookingStatus(Long bookingId, BookingStatus newStatus, Long userId) {
@@ -180,8 +133,10 @@ public class BookingServiceImpl implements BookingService {
 
         BookingStatus currentStatus = booking.getStatus();
 
-        // Validate booking state transition
-        bookingStateMachine.validate(currentStatus, newStatus);
+        // Simple status validation
+        if (newStatus == BookingStatus.CONFIRMED && currentStatus != BookingStatus.PENDING) {
+            throw new IllegalStateException("Cannot confirm booking with status: " + currentStatus);
+        }
 
         booking.setStatus(newStatus);
 
@@ -189,35 +144,47 @@ public class BookingServiceImpl implements BookingService {
 
         // Synchronise slot status with booking transition
         if (newStatus == BookingStatus.CONFIRMED) {
-            slotStateMachine.validate(slot.getStatus(), SlotStatus.BOOKED);
             slot.setStatus(SlotStatus.BOOKED);
             slotRepository.save(slot);
+            
+            // Send WebSocket notification
+            webSocketHandler.sendToUser(userId, WebSocketMessage.bookingConfirmed(bookingId));
 
         } else if (newStatus == BookingStatus.CANCELLED) {
             booking.setCancelledAt(Instant.now());
-            slotStateMachine.validate(slot.getStatus(), SlotStatus.AVAILABLE);
             slot.setStatus(SlotStatus.AVAILABLE);
             slotRepository.save(slot);
+            
+            // Send WebSocket notification
+            webSocketHandler.sendToUser(userId, 
+                    WebSocketMessage.bookingCancelled(bookingId, booking.getCancellationReason()));
         }
 
         bookingRepository.save(booking);
 
-        // Audit log (placeholder – will be replaced by a dedicated audit service)
-        log.info("AUDIT: booking {} transitioned {} -> {} by userId={}",
-                bookingId, currentStatus, newStatus, userId);
+        log.info("Booking {} transitioned {} -> {} by userId={}", bookingId, currentStatus, newStatus, userId);
 
         return toDto(booking);
     }
 
     // ── cancelBooking ─────────────────────────────────────────────────────────
 
-    /**
-     * {@inheritDoc}
-     *
-     * Requirements: 11.5
-     */
     @Override
-    public void cancelBooking(Long bookingId, Long userId) {
+    public void cancelBooking(Long bookingId, Long userId, String reason) {
+        Booking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new ResourceNotFoundException("Booking", bookingId));
+        
+        // Authorization check
+        if (!booking.getUser().getId().equals(userId)) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "You are not authorized to cancel this booking");
+        }
+        
+        // Save cancellation reason
+        if (reason != null && !reason.isBlank()) {
+            booking.setCancellationReason(reason);
+        }
+        
         updateBookingStatus(bookingId, BookingStatus.CANCELLED, userId);
     }
 
