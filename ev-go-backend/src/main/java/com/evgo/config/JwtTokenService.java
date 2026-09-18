@@ -86,6 +86,12 @@ public class JwtTokenService {
     public String extractUserId(String token) {
         return parseClaims(token).getSubject();
     }
+    
+    /** Extracts the user ID (subject) from a token as Long. */
+    public Long extractUserIdAsLong(String token) {
+        String userId = extractUserId(token);
+        return userId != null ? Long.parseLong(userId) : null;
+    }
 
     /** Extracts the role claim from a token. */
     public String extractRole(String token) {

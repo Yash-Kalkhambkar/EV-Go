@@ -1,33 +1,34 @@
 package com.evgo.config;
 
+import com.evgo.websocket.BookingWebSocketHandler;
+import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.messaging.simp.config.MessageBrokerRegistry;
-import org.springframework.web.socket.config.annotation.EnableWebSocketMessageBroker;
-import org.springframework.web.socket.config.annotation.StompEndpointRegistry;
-import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerConfigurer;
+import org.springframework.web.socket.config.annotation.EnableWebSocket;
+import org.springframework.web.socket.config.annotation.WebSocketConfigurer;
+import org.springframework.web.socket.config.annotation.WebSocketHandlerRegistry;
 
 /**
- * WebSocket / STOMP broker configuration.
+ * WebSocket configuration for real-time booking notifications.
  *
- * <p>Clients connect via SockJS at {@code /ws} and subscribe to topics under
- * {@code /topic/stations/{stationId}/slots} for real-time slot updates.
+ * <p>Endpoints:
+ * <ul>
+ *   <li>/ws/bookings - User booking notifications (JWT auth required)</li>
+ * </ul>
+ * 
+ * <p>Connection: {@code ws://host/ws/bookings?token=<jwt>}
  *
  * Requirements: 7.1, 7.2, 7.3
  */
 @Configuration
-@EnableWebSocketMessageBroker
-public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
+@EnableWebSocket
+@RequiredArgsConstructor
+public class WebSocketConfig implements WebSocketConfigurer {
+    
+    private final BookingWebSocketHandler bookingWebSocketHandler;
 
     @Override
-    public void registerStompEndpoints(StompEndpointRegistry registry) {
-        registry.addEndpoint("/ws")
-                .setAllowedOriginPatterns("*")
-                .withSockJS();
-    }
-
-    @Override
-    public void configureMessageBroker(MessageBrokerRegistry registry) {
-        registry.enableSimpleBroker("/topic");
-        registry.setApplicationDestinationPrefixes("/app");
+    public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
+        registry.addHandler(bookingWebSocketHandler, "/ws/bookings")
+                .setAllowedOriginPatterns("*");
     }
 }

@@ -2,8 +2,6 @@ package com.evgo.ai;
 
 import com.evgo.ai.dto.ChatRequest;
 import com.evgo.ai.dto.ChatResponse;
-import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
-import io.micrometer.core.instrument.MeterRegistry;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -16,10 +14,8 @@ import java.time.Duration;
 import java.util.*;
 
 /**
- * Claude API integration with circuit breaker, token budget management,
- * and conversation history trimming.
- *
- * Requirements: 14.1, 14.2, 14.6, 15.1, 15.2, 15.3, 15.7
+ * Claude API integration with basic error handling and conversation management.
+ * V1: Simple try/catch fallback (no circuit breaker infrastructure).
  */
 @Slf4j
 @Service
@@ -27,8 +23,6 @@ import java.util.*;
 public class AIServiceImpl implements AIService {
 
     private static final String CLAUDE_API_URL = "https://api.anthropic.com/v1/messages";
-    private static final String TOOL_CACHE_PREFIX = "tool:cache:";
-    private static final int TOKEN_BUDGET = 8000;
     private static final int MAX_MESSAGES = 50;
 
     @Value("${app.claude.api-key:}")
@@ -41,63 +35,49 @@ public class AIServiceImpl implements AIService {
     private int maxTokens;
 
     private final ConversationStore conversationStore;
-    private final RedisTemplate<String, String> redisTemplate;
-    private final MeterRegistry meterRegistry;
 
     /**
-     * Processes a chat message with circuit breaker protection.
+     * Processes a chat message with basic error handling.
      * Falls back gracefully when Claude API is unavailable.
-     * Requirements: 14.1, 14.2, 14.6
      */
     @Override
-    @CircuitBreaker(name = "claudeApi", fallbackMethod = "chatFallback")
     public ChatResponse chat(Long userId, ChatRequest request) {
-        List<Map<String, Object>> history = conversationStore.getHistory(userId);
+        try {
+            List<Map<String, Object>> history = conversationStore.getHistory(userId);
 
-        // Reject if conversation too long — Req 15.5
-        if (history.size() >= MAX_MESSAGES) {
-            return ChatResponse.of("Conversation is too long. Please start a new chat.");
+            // Reject if conversation too long
+            if (history.size() >= MAX_MESSAGES) {
+                return ChatResponse.of("Conversation is too long. Please start a new chat.");
+            }
+
+            // Add user message
+            history.add(Map.of("role", "user", "content", request.message()));
+
+            // Trim if needed (keep last 20 messages)
+            history = trimHistory(history);
+
+            // Call Claude API
+            String reply = callClaude(history);
+
+            // Add assistant reply to history
+            history.add(Map.of("role", "assistant", "content", reply));
+            conversationStore.saveHistory(userId, history);
+
+            return ChatResponse.of(reply);
+        } catch (Exception ex) {
+            log.warn("Claude API call failed: {}", ex.getMessage());
+            return ChatResponse.fallback(
+                    "I'm having trouble connecting right now. Please use the search bar to find stations.");
         }
-
-        // Add user message
-        history.add(Map.of("role", "user", "content", request.message()));
-
-        // Trim if over token budget — Req 15.2
-        history = trimHistory(history);
-
-        // Call Claude API
-        String reply = callClaude(history);
-
-        // Add assistant reply to history
-        history.add(Map.of("role", "assistant", "content", reply));
-        conversationStore.saveHistory(userId, history);
-
-        meterRegistry.counter("ai.chat.success").increment();
-        return ChatResponse.of(reply);
     }
 
     /**
-     * Fallback when circuit breaker is OPEN.
-     * Requirements: 14.2
-     */
-    public ChatResponse chatFallback(Long userId, ChatRequest request, Exception ex) {
-        log.warn("Claude API unavailable (circuit open): {}", ex.getMessage());
-        meterRegistry.counter("ai.chat.fallback").increment();
-        return ChatResponse.fallback(
-                "I'm having trouble connecting right now. Please use the search bar to find stations.");
-    }
-
-    /**
-     * Trims oldest messages when conversation exceeds token budget.
-     * Keeps system prompt and prioritises tool results over small talk.
-     * Requirements: 15.2, 15.3, 15.4
+     * Trims oldest messages to keep conversation under control.
+     * Simple approach: keep last 20 messages.
      */
     List<Map<String, Object>> trimHistory(List<Map<String, Object>> history) {
-        // Simple trim: remove oldest non-system messages until under budget
-        // A full token count would require the Claude tokenizer; we use message count as proxy
         while (history.size() > 20) {
-            // Remove second message (keep first = system/context if present)
-            history.remove(1);
+            history.remove(0);
         }
         return history;
     }
