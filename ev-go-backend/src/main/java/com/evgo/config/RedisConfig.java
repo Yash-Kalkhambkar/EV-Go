@@ -101,11 +101,12 @@ public class RedisConfig {
     }
 
     /**
-     * String-specific RedisTemplate for simple key-value operations.
-     * Used for rate limiting and simple caching.
+     * Custom string RedisTemplate for simple key-value operations.
+     * Named differently to avoid conflict with Redisson's autoconfigured bean.
+     * Used for JWT revocation tracking and simple caching.
      */
-    @Bean
-    public RedisTemplate<String, String> stringRedisTemplate(RedisConnectionFactory connectionFactory) {
+    @Bean("customStringRedisTemplate")
+    public RedisTemplate<String, String> customStringRedisTemplate(RedisConnectionFactory connectionFactory) {
         RedisTemplate<String, String> template = new RedisTemplate<>();
         template.setConnectionFactory(connectionFactory);
 
