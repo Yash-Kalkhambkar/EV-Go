@@ -56,4 +56,14 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
      * @return list of bookings ordered by booked_at DESC
      */
     List<Booking> findByUserIdOrderByBookedAtDesc(Long userId);
+
+    /**
+     * Returns paginated bookings filtered by status.
+     * Used by admin to view bookings by status (PENDING, CONFIRMED, etc.).
+     *
+     * @param status booking status to filter by
+     * @param pageable pagination parameters
+     * @return page of bookings matching the status
+     */
+    Page<Booking> findByStatus(BookingStatus status, Pageable pageable);
 }
