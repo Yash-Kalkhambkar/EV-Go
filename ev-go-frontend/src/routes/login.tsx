@@ -1,4 +1,8 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useState, type FormEvent } from "react";
+import { api } from "../lib/api";
+import { setTokens } from "../lib/auth";
+import { isAdmin } from "../lib/auth";
 
 export const Route = createFileRoute("/login")({
   component: Page2,
@@ -15,6 +19,38 @@ export const Route = createFileRoute("/login")({
 });
 
 function Page2() {
+  const navigate = useNavigate();
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setError(null);
+    setLoading(true);
+    const form = e.currentTarget;
+    const email = (form.elements.namedItem("email") as HTMLInputElement).value;
+    const password = (form.elements.namedItem("password") as HTMLInputElement).value;
+
+    try {
+      const { data } = await api.post<{ accessToken: string; expiresAt: string }>(
+        "/auth/login",
+        { email, password }
+      );
+      setTokens(data.accessToken, data.expiresAt);
+      if (isAdmin()) {
+        await navigate({ to: "/admin/stations" });
+      } else {
+        await navigate({ to: "/stations" });
+      }
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { message?: string } } })?.response?.data
+          ?.message ?? "Invalid email or password. Please check your credentials.";
+      setError(msg);
+    } finally {
+      setLoading(false);
+    }
+  }
   return (
     <div className="bg-surface font-body-md text-body-md text-on-surface antialiased min-h-screen flex items-center justify-center">
 <main className="w-full bg-surface"><div className="flex flex-col w-full items-center justify-center py-12 px-4 sm:px-6">
@@ -35,48 +71,31 @@ function Page2() {
 <p className="font-body-md text-body-md text-on-surface-variant">Sign in to manage your charging reservations</p>
 </div>
 
-<div className="mb-6 p-3.5 rounded-lg bg-error-container/40 flex items-start gap-3" id="error-alert">
+{error && (
+<div className="mb-6 p-3.5 rounded-lg bg-error-container/40 flex items-start gap-3">
 <span className="material-symbols-outlined text-error text-[20px] shrink-0 mt-0.5" style={{fontVariationSettings: "'FILL' 1"}}>error</span>
 <div className="flex-1">
 <p className="font-label-md text-label-md text-on-error-container font-medium">Authentication Failed</p>
-<p className="font-body-sm text-body-sm text-on-surface-variant mt-0.5">Invalid email or password. Please check your credentials.</p>
+<p className="font-body-sm text-body-sm text-on-surface-variant mt-0.5">{error}</p>
 </div>
-<button className="text-on-surface-variant hover:text-on-surface transition-colors" type="button">
-<span className="material-symbols-outlined text-[18px]">close</span>
-</button>
 </div>
+)}
 
-<form className="flex flex-col gap-5">
-
+<form className="flex flex-col gap-5" onSubmit={handleSubmit}>
 <div className="flex flex-col gap-1.5">
 <label className="font-label-md text-label-md text-on-surface font-medium" htmlFor="email">Email Address</label>
-<div className="relative flex items-center">
-<input className="w-full h-11 px-3.5 rounded-lg bg-surface-container-low text-on-surface placeholder:text-outline font-body-md text-body-md outline-none focus:bg-surface-container-lowest transition-colors shadow-inner" id="email" name="email" placeholder="name@example.com" required={true} type="email" defaultValue="alex.turner@fleetlogix.io" />
-</div>
+<input className="w-full h-11 px-3.5 rounded-lg bg-surface-container-low text-on-surface placeholder:text-outline font-body-md text-body-md outline-none focus:bg-surface-container-lowest transition-colors shadow-inner" id="email" name="email" placeholder="name@example.com" required type="email" />
 </div>
 
 <div className="flex flex-col gap-1.5">
 <div className="flex items-center justify-between">
 <label className="font-label-md text-label-md text-on-surface font-medium" htmlFor="password">Password</label>
-<a className="font-label-sm text-label-sm text-primary hover:underline font-semibold" href="#">Forgot Password?</a>
 </div>
-<div className="relative flex items-center">
-<input className="w-full h-11 pl-3.5 pr-11 rounded-lg bg-surface-container-low text-on-surface placeholder:text-outline font-body-md text-body-md outline-none focus:bg-surface-container-lowest transition-colors shadow-inner" id="password" name="password" placeholder="••••••••" required={true} type="password" />
-<button aria-label="Toggle password visibility" className="absolute right-0 top-0 bottom-0 px-3.5 flex items-center justify-center text-outline hover:text-on-surface transition-colors" id="toggle-password" type="button">
-<span className="material-symbols-outlined text-[20px]" id="password-icon">visibility</span>
-</button>
-</div>
+<input className="w-full h-11 px-3.5 rounded-lg bg-surface-container-low text-on-surface placeholder:text-outline font-body-md text-body-md outline-none focus:bg-surface-container-lowest transition-colors shadow-inner" id="password" name="password" placeholder="••••••••" required type="password" />
 </div>
 
-<div className="flex items-center justify-between mt-1">
-<label className="flex items-center gap-2.5 cursor-pointer select-none">
-<input defaultChecked={true} className="w-4 h-4 rounded bg-surface-container-low text-primary accent-primary focus:ring-0 cursor-pointer" id="remember-me" name="remember-me" type="checkbox" />
-<span className="font-body-sm text-body-sm text-on-surface">Remember me</span>
-</label>
-</div>
-
-<button className="mt-2 w-full h-12 rounded-lg bg-primary hover:bg-primary-container text-on-primary font-headline-md text-headline-md tracking-wide transition-all shadow-sm active:scale-[0.99] flex items-center justify-center gap-2" type="submit">
-<span>Login</span>
+<button className="mt-2 w-full h-12 rounded-lg bg-primary hover:bg-primary-container text-on-primary font-headline-md text-headline-md tracking-wide transition-all shadow-sm active:scale-[0.99] flex items-center justify-center gap-2 disabled:opacity-60" type="submit" disabled={loading}>
+<span>{loading ? "Signing in…" : "Login"}</span>
 </button>
 </form>
 
