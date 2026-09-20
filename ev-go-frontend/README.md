@@ -1,40 +1,24 @@
-# Pixel Perfect Pages
+# EV GO — Frontend
 
-Build this app using the HTML files referenced below. You can hotlink the images referenced in the HTML. The attached images are screenshots of the desired screens. Here are public links to the html of the screens which you should read and use to build the app:
+EV charging station booking platform built with TanStack Start, React 19, and Tailwind CSS 4.
 
-1. https://contribution.usercontent.google.com/download?c=CgthaWRhX2NvZGVmeBJ8Eh1hcHBfY29tcGFuaW9uX2dlbmVyYXRlZF9maWxlcxpbCiVodG1sXzAwMDY1YjhkZDNiOTNmYzMwMWI0ZTUyZWNmMWI5OGVjEgsSBxCxxJb24xQYAZIBJAoKcHJvamVjdF9pZBIWQhQxMjg3Nzk2NjY3NTg3NjUxNTc3Nw&filename=&opi=89354086
-2. https://contribution.usercontent.google.com/download?c=CgthaWRhX2NvZGVmeBJ8Eh1hcHBfY29tcGFuaW9uX2dlbmVyYXRlZF9maWxlcxpbCiVodG1sXzAwMDY1YjhkZGQ3Nzg5MTQwMmE5YjM1ZWYyMTAzNzdlEgsSBxCxxJb24xQYAZIBJAoKcHJvamVjdF9pZBIWQhQxMjg3Nzk2NjY3NTg3NjUxNTc3Nw&filename=&opi=89354086
-3. https://contribution.usercontent.google.com/download?c=CgthaWRhX2NvZGVmeBJ8Eh1hcHBfY29tcGFuaW9uX2dlbmVyYXRlZF9maWxlcxpbCiVodG1sXzAwMDY1YjhkZDNlOGQ5MDIwMzZjNzliMTE5MjdmM2M0EgsSBxCxxJb24xQYAZIBJAoKcHJvamVjdF9pZBIWQhQxMjg3Nzk2NjY3NTg3NjUxNTc3Nw&filename=&opi=89354086
-4. https://contribution.usercontent.google.com/download?c=CgthaWRhX2NvZGVmeBJ8Eh1hcHBfY29tcGFuaW9uX2dlbmVyYXRlZF9maWxlcxpbCiVodG1sXzAwMDY1YjhkZGQ4OWRmYTQwMzMyYzk0MzliMWMzZDBlEgsSBxCxxJb24xQYAZIBJAoKcHJvamVjdF9pZBIWQhQxMjg3Nzk2NjY3NTg3NjUxNTc3Nw&filename=&opi=89354086
-5. https://contribution.usercontent.google.com/download?c=CgthaWRhX2NvZGVmeBJ8Eh1hcHBfY29tcGFuaW9uX2dlbmVyYXRlZF9maWxlcxpbCiVodG1sXzAwMDY1YjhkZWI5ZDU2YzUwMjA3YjgyM2E4M2FhYWZmEgsSBxCxxJb24xQYAZIBJAoKcHJvamVjdF9pZBIWQhQxMjg3Nzk2NjY3NTg3NjUxNTc3Nw&filename=&opi=89354086
-6. https://contribution.usercontent.google.com/download?c=CgthaWRhX2NvZGVmeBJ8Eh1hcHBfY29tcGFuaW9uX2dlbmVyYXRlZF9maWxlcxpbCiVodG1sXzAwMDY1YjhkZWIyZjZhY2QwMzMyY2ZjM2VlMjM0MjJkEgsSBxCxxJb24xQYAZIBJAoKcHJvamVjdF9pZBIWQhQxMjg3Nzk2NjY3NTg3NjUxNTc3Nw&filename=&opi=89354086
-7. https://contribution.usercontent.google.com/download?c=CgthaWRhX2NvZGVmeBJ8Eh1hcHBfY29tcGFuaW9uX2dlbmVyYXRlZF9maWxlcxpbCiVodG1sXzAwMDY1YjhkZjI4MTEwZTgwMmQzYzBhMmVmMzQ4MTA1EgsSBxCxxJb24xQYAZIBJAoKcHJvamVjdF9pZBIWQhQxMjg3Nzk2NjY3NTg3NjUxNTc3Nw&filename=&opi=89354086
-8. https://contribution.usercontent.google.com/download?c=CgthaWRhX2NvZGVmeBJ8Eh1hcHBfY29tcGFuaW9uX2dlbmVyYXRlZF9maWxlcxpbCiVodG1sXzAwMDY1YjhkZjFlNjhiNWUwMmE5YjMwMDM0Mzk4ZWMyEgsSBxCxxJb24xQYAZIBJAoKcHJvamVjdF9pZBIWQhQxMjg3Nzk2NjY3NTg3NjUxNTc3Nw&filename=&opi=89354086
-9. https://contribution.usercontent.google.com/download?c=CgthaWRhX2NvZGVmeBJ8Eh1hcHBfY29tcGFuaW9uX2dlbmVyYXRlZF9maWxlcxpbCiVodG1sXzAwMDY1YjhkZjJjODZhYjgwMzMyYzk0MzliMWMzZDBlEgsSBxCxxJb24xQYAZIBJAoKcHJvamVjdF9pZBIWQhQxMjg3Nzk2NjY3NTg3NjUxNTc3Nw&filename=&opi=89354086
-10. https://contribution.usercontent.google.com/download?c=CgthaWRhX2NvZGVmeBJ8Eh1hcHBfY29tcGFuaW9uX2dlbmVyYXRlZF9maWxlcxpbCiVodG1sXzAwMDY1YjhkZGRkY2I4NmYwMWE2MmRhN2Q3MDJiNjZjEgsSBxCxxJb24xQYAZIBJAoKcHJvamVjdF9pZBIWQhQxMjg3Nzk2NjY3NTg3NjUxNTc3Nw&filename=&opi=89354086
-11. https://contribution.usercontent.google.com/download?c=CgthaWRhX2NvZGVmeBJ8Eh1hcHBfY29tcGFuaW9uX2dlbmVyYXRlZF9maWxlcxpbCiVodG1sXzAwMDY1YjhkZWI0OWFiNTMwNzc5OWU3MDhiMzQ4NjIyEgsSBxCxxJb24xQYAZIBJAoKcHJvamVjdF9pZBIWQhQxMjg3Nzk2NjY3NTg3NjUxNTc3Nw&filename=&opi=89354086
-12. https://contribution.usercontent.google.com/download?c=CgthaWRhX2NvZGVmeBJ8Eh1hcHBfY29tcGFuaW9uX2dlbmVyYXRlZF9maWxlcxpbCiVodG1sXzAwMDY1YjhkZDQ3NTBkZWIwMzkyY2JjMjQ1MDgxYWQ4EgsSBxCxxJb24xQYAZIBJAoKcHJvamVjdF9pZBIWQhQxMjg3Nzk2NjY3NTg3NjUxNTc3Nw&filename=&opi=89354086
-13. https://contribution.usercontent.google.com/download?c=CgthaWRhX2NvZGVmeBJ8Eh1hcHBfY29tcGFuaW9uX2dlbmVyYXRlZF9maWxlcxpbCiVodG1sXzAwMDY1YjhkZjZhMjFlODAwMWE2MDlmYzMzMmE2NjlmEgsSBxCxxJb24xQYAZIBJAoKcHJvamVjdF9pZBIWQhQxMjg3Nzk2NjY3NTg3NjUxNTc3Nw&filename=&opi=89354086
-14. https://contribution.usercontent.google.com/download?c=CgthaWRhX2NvZGVmeBJ8Eh1hcHBfY29tcGFuaW9uX2dlbmVyYXRlZF9maWxlcxpbCiVodG1sXzAwMDY1YjhkZjVmYTZmMzQwMmQzZDFhYzdiMDFmNWJkEgsSBxCxxJb24xQYAZIBJAoKcHJvamVjdF9pZBIWQhQxMjg3Nzk2NjY3NTg3NjUxNTc3Nw&filename=&opi=89354086
-15. https://contribution.usercontent.google.com/download?c=CgthaWRhX2NvZGVmeBJ8Eh1hcHBfY29tcGFuaW9uX2dlbmVyYXRlZF9maWxlcxpbCiVodG1sXzAwMDY1YjhkZjU2YmZmYTcwMzM4NWY3NjhmMzk0Yzc0EgsSBxCxxJb24xQYAZIBJAoKcHJvamVjdF9pZBIWQhQxMjg3Nzk2NjY3NTg3NjUxNTc3Nw&filename=&opi=89354086
+## Stack
 
-This project was built with [Lovable](https://lovable.dev).
-
-## Build with Lovable
-
-Continue developing this project in the [Lovable editor](https://lovable.dev/projects/a5027434-d85b-45a2-9e32-bdc6b43a79dc).
-
-- **Ship faster**: describe what you want to build and Lovable handles the code.
-- **Stay in sync**: every change made in Lovable is committed straight to this repository.
-- **Full ownership**: this code is yours. Push to `main` on GitHub and your changes sync back into Lovable, ready for your next prompt.
+- **Framework:** TanStack Start (SSR, file-based routing)
+- **UI:** React 19, Radix UI, Tailwind CSS 4, shadcn/ui components
+- **State / Data:** TanStack Query
+- **Forms:** React Hook Form + Zod
 
 ## Development
 
-Prefer working locally? You need Node.js and npm — [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating).
+Requires Node.js 20+ and npm.
 
 ```sh
 git clone <this-repository-url>
-cd <repository-name>
-npm i
+cd ev-go-frontend
+npm install
 npm run dev
 ```
+
+Frontend runs on `http://localhost:8080`.  
+Backend must be running on `http://localhost:8081`.
