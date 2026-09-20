@@ -61,16 +61,17 @@ public class Station {
     private boolean isActive = true;
 
     /**
-     * Connector types supported by this station (many-to-many).
+     * Connector types supported by this station (e.g., "CCS2", "CHAdeMO").
+     * Stored in join table as simple strings.
      */
-    @ManyToMany(fetch = FetchType.LAZY)
-    @JoinTable(
+    @ElementCollection(fetch = FetchType.LAZY)
+    @CollectionTable(
             name = "station_connectors",
-            joinColumns = @JoinColumn(name = "station_id"),
-            inverseJoinColumns = @JoinColumn(name = "connector_type_id")
+            joinColumns = @JoinColumn(name = "station_id")
     )
+    @Column(name = "connector_type", length = 50)
     @Builder.Default
-    private Set<ConnectorType> connectorTypes = new HashSet<>();
+    private Set<String> connectorTypes = new HashSet<>();
 
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)

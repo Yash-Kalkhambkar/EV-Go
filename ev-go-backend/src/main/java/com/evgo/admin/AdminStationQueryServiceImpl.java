@@ -53,7 +53,6 @@ public class AdminStationQueryServiceImpl implements AdminStationQueryService {
                 station.getPricePerHour(),
                 station.isActive(),
                 station.getConnectorTypes().stream()
-                        .map(ct -> ct.getCode())
                         .sorted()
                         .toList(),
                 null // No distance for admin list

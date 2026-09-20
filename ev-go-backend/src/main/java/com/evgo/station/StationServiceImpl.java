@@ -42,7 +42,6 @@ import java.util.stream.Collectors;
 public class StationServiceImpl implements StationService {
     
     private final StationRepository stationRepository;
-    private final ConnectorTypeRepository connectorTypeRepository;
     
     private static final double EARTH_RADIUS_KM = 6371.0;
     
@@ -115,12 +114,6 @@ public class StationServiceImpl implements StationService {
         log.info("Creating station: name={}, location=({}, {})", 
                  request.name(), request.latitude(), request.longitude());
         
-        // Fetch or create connector types
-        Set<ConnectorType> connectors = request.connectorTypes().stream()
-                .map(code -> connectorTypeRepository.findByCode(code)
-                        .orElseGet(() -> createConnectorType(code)))
-                .collect(Collectors.toSet());
-        
         // Build station entity
         Station station = Station.builder()
                 .name(request.name())
@@ -131,7 +124,7 @@ public class StationServiceImpl implements StationService {
                 .totalSlots(request.totalSlots())
                 .pricePerHour(request.pricePerHour())
                 .isActive(true)
-                .connectorTypes(connectors)
+                .connectorTypes(Set.copyOf(request.connectorTypes()))
                 .build();
         
         station = stationRepository.save(station);
@@ -177,11 +170,7 @@ public class StationServiceImpl implements StationService {
             station.setActive(request.isActive());
         }
         if (request.connectorTypes() != null && !request.connectorTypes().isEmpty()) {
-            Set<ConnectorType> connectors = request.connectorTypes().stream()
-                    .map(code -> connectorTypeRepository.findByCode(code)
-                            .orElseGet(() -> createConnectorType(code)))
-                    .collect(Collectors.toSet());
-            station.setConnectorTypes(connectors);
+            station.setConnectorTypes(Set.copyOf(request.connectorTypes()));
         }
         
         station = stationRepository.save(station);
@@ -236,7 +225,6 @@ public class StationServiceImpl implements StationService {
      */
     private StationDto toDto(Station station, Double distanceKm) {
         List<String> connectorCodes = station.getConnectorTypes().stream()
-                .map(ConnectorType::getCode)
                 .sorted()
                 .toList();
         
@@ -253,25 +241,5 @@ public class StationServiceImpl implements StationService {
                 connectorCodes,
                 distanceKm
         );
-    }
-    
-    /**
-     * Create a new connector type if it doesn't exist.
-     * 
-     * @param code Connector type code
-     * @return Created or existing connector type
-     */
-    private ConnectorType createConnectorType(String code) {
-        ConnectorType connector = ConnectorType.builder()
-                .code(code)
-                .name(code) // Use code as name for now
-                .isActive(true)
-                .build();
-        
-        connectorTypeRepository.save(connector);
-        
-        log.info("Created connector type: code={}", code);
-        
-        return connector;
     }
 }
