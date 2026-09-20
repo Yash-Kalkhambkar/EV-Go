@@ -82,8 +82,4 @@ public class Booking {
     /** Human-readable reason for cancellation; null if not cancelled. */
     @Column(name = "cancellation_reason", length = 500)
     private String cancellationReason;
-
-    /** Amount to be refunded; null if no refund applies. */
-    @Column(name = "refund_amount", precision = 8, scale = 2)
-    private BigDecimal refundAmount;
 }

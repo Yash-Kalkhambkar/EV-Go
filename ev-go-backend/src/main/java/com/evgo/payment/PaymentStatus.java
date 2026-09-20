@@ -14,14 +14,5 @@ public enum PaymentStatus {
     SUCCESS,
 
     /** Payment failed or was rejected. */
-    FAILED,
-
-    /** Full refund issued. */
-    REFUNDED,
-
-    /** Partial refund issued; remaining amount retained. */
-    PARTIALLY_REFUNDED,
-
-    /** Refund attempt failed after all retries. */
-    REFUND_FAILED
+    FAILED
 }

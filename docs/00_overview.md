@@ -28,6 +28,24 @@ Everything in v1 is designed around making that loop fast, reliable, and frustra
 
 ---
 
+## Out of Scope for V1 (Deliberate Design Decisions)
+
+The following features are intentionally excluded from v1. Each represents a production-grade enhancement that would add complexity without proportional value for a showcase project:
+
+| Feature | Why It's Skipped |
+|---|---|
+| **Razorpay webhook as payment source of truth** | V1 trusts the frontend-triggered `/payments/verify` call plus signature validation. A webhook-driven flow is more robust (handles interrupted confirmations) but requires additional infrastructure for a project with no real payment volume. |
+| **Idempotency keys on POST /bookings** | Real production concern for preventing double-submissions on client retries. V1's payment verification already checks booking status to make retries safe, covering the common case. |
+| **Rate limiting** | Essential for public APIs under real load. Not worth the implementation time for a showcase project with controlled access. |
+| **Comprehensive audit logging** | V1 logs errors and critical operations. Full audit trail (tracking every state change with actor + timestamp) is production hygiene but overkill for demonstrating core features. |
+| **Structured observability (distributed tracing, metrics dashboards)** | Request IDs and basic logging are included. Full OpenTelemetry integration and Grafana dashboards are valuable at scale but not necessary to demonstrate the booking flow works correctly. |
+| **AI destructive-action confirmation** | A "confirm before cancel_booking" step in the chatbot would be nice UX. Server-side enforcement already prevents unauthorized cancellations, so the AI can safely call the tool — worst case is a user-initiated cancellation they regret. |
+| **Redis Pub/Sub for WebSocket scaling** | V1 caps Cloud Run at 1 instance since the STOMP broker is in-memory. Redis Pub/Sub would enable horizontal scaling but isn't needed until traffic justifies multiple instances. |
+
+These aren't bugs or oversights — they're conscious scope cuts that keep v1 focused on demonstrating a working, well-architected booking system without gold-plating.
+
+---
+
 ## Tech Stack
 
 | Layer | Choice | Reason |

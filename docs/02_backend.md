@@ -172,7 +172,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     @Override
     public void registerStompEndpoints(StompEndpointRegistry registry) {
         registry.addEndpoint("/ws")
-                .setAllowedOriginPatterns("*")
+                .setAllowedOriginPatterns("*")  // Dev only - see note below
                 .withSockJS();
     }
 
@@ -183,6 +183,8 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     }
 }
 ```
+
+**Production CORS Note:** The `setAllowedOriginPatterns("*")` configuration is acceptable for local development but should be restricted in production to the actual frontend origin (e.g., `https://evgo.app`). Update this before deploying to production.
 
 Slot updates are broadcast to `/topic/stations/{stationId}/slots` whenever a booking is created or cancelled. The `SlotBroadcaster` is called from `BookingService` after every confirmed state change.
 
@@ -231,6 +233,8 @@ public BookingDto createBooking(CreateBookingRequest req, Long userId) {
     }
 }
 ```
+
+**Note on lock release safety:** The `finally` block that deletes the Redis lock is not ownership-safe. If a request exceeds the 10-second TTL, Redis auto-expires the lock, a second request acquires it, and then the first request's `finally` block could delete the second request's lock. This is acceptable here because Postgres's `FOR UPDATE` and the unique partial index are the actual correctness guarantees — a stale Redis lock delete only risks a spurious 409 for an innocent second user, never a double booking.
 
 ### 2. AI conversation history (per user, per session)
 

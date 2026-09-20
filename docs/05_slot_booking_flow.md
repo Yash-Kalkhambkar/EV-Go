@@ -46,6 +46,7 @@ AVAILABLE   NOT AVAILABLE                                  │
    ▼                                                       │
 Postgres: INSERT booking (status=PENDING)                  │
 Postgres: UPDATE slot SET status=RESERVED                  │
+Postgres: COMMIT                                           │
         │                                                  │
         ▼                                                  │
 Redis: DEL slot:lock:{slotId}  (lock released)             │
@@ -54,8 +55,19 @@ Redis: DEL slot:lock:{slotId}  (lock released)             │
 WebSocket: broadcast slot update to /topic/stations/{id}   │
         │                                                  │
         ▼                                                  │
-Return 201: { bookingId, razorpayOrderId, totalAmount } ───┘
-
+Return 201: { bookingId, totalAmount } ────────────────────┘
+        │
+        ▼
+POST /payments/create-order with bookingId
+        │
+        ▼
+Create Razorpay order (OUTSIDE transaction)
+        │
+        ▼
+Attach razorpay_order_id to booking
+        │
+        ▼
+Return: { razorpayOrderId, amount, currency, keyId }
         │
         ▼
 Frontend opens Razorpay modal
@@ -98,6 +110,8 @@ The Redis lock (`SET NX EX`) prevents concurrent requests from even reaching the
 - Postgres `FOR UPDATE` handles the remaining edge cases if Redis ever has a split-brain or the lock expires unexpectedly
 
 Using only Redis is usually fine, but for something like a booking system where double-bookings are genuinely bad, the belt-and-suspenders approach costs almost nothing and adds real safety.
+
+**Note on Redis lock release safety:** The `finally { redisTemplate.delete(lockKey) }` pattern is not ownership-safe — if a request exceeds the 10-second TTL, Redis auto-expires the lock, a second request acquires it, and then the first request's `finally` block deletes the second request's lock. This is acceptable here because Postgres's `FOR UPDATE` and the unique partial index (`uq_active_booking`) are the actual correctness guarantees — a stale Redis lock delete only risks a spurious 409 for an innocent second user, never a double booking.
 
 ---
 
@@ -171,9 +185,12 @@ public class BookingService {
                 throw new SlotUnavailableException("Slot is no longer available");
             }
 
-            // Step 3: Create Razorpay order before writing to DB
-            // (if Razorpay is down, we haven't touched slot status yet)
-            String razorpayOrderId = paymentService.createOrder(slot.getStation().getPricePerHour());
+            // Step 3: Calculate price based on slot duration
+            BigDecimal pricePerHour = slot.getStation().getPricePerHour();
+            Duration slotDuration = Duration.between(slot.getStartTime(), slot.getEndTime());
+            BigDecimal totalAmount = pricePerHour
+                .multiply(BigDecimal.valueOf(slotDuration.toMinutes()))
+                .divide(BigDecimal.valueOf(60), 2, RoundingMode.HALF_UP);
 
             // Step 4: Create booking + reserve slot
             User user = new User(); user.setId(userId);
@@ -182,8 +199,7 @@ public class BookingService {
                 .slot(slot)
                 .station(slot.getStation())
                 .status(BookingStatus.PENDING)
-                .totalAmount(slot.getStation().getPricePerHour())
-                .razorpayOrderId(razorpayOrderId)
+                .totalAmount(totalAmount)
                 .build();
 
             bookingRepository.save(booking);
@@ -222,18 +238,38 @@ HMAC-SHA256(razorpayOrderId + "|" + razorpayPaymentId, keySecret)
 
 ```java
 // PaymentService.java
-public void verifyPayment(VerifyPaymentRequest req, Long bookingId) {
-    String payload = req.getRazorpayOrderId() + "|" + req.getRazorpayPaymentId();
+public void verifyPayment(VerifyPaymentRequest req, Long bookingId, Long userId) {
+    Booking booking = bookingRepository.findById(bookingId)
+        .orElseThrow(() -> new ResourceNotFoundException("Booking not found"));
 
+    // Check ownership
+    if (!booking.getUser().getId().equals(userId)) {
+        throw new AccessDeniedException("Not your booking");
+    }
+
+    // Check booking status (idempotency - already processed?)
+    if (booking.getStatus() != BookingStatus.PENDING) {
+        // Already confirmed or cancelled - return success for idempotency
+        if (booking.getStatus() == BookingStatus.CONFIRMED) {
+            return; // Already processed successfully
+        }
+        throw new IllegalStateException("Booking already processed");
+    }
+
+    // Check order ID matches
+    if (!booking.getRazorpayOrderId().equals(req.getRazorpayOrderId())) {
+        throw new PaymentFailedException("Order ID mismatch");
+    }
+
+    // Verify HMAC signature
+    String payload = req.getRazorpayOrderId() + "|" + req.getRazorpayPaymentId();
     String expectedSignature = HMAC.sha256(payload, razorpayKeySecret);
 
     if (!expectedSignature.equals(req.getRazorpaySignature())) {
         throw new PaymentFailedException("Payment signature verification failed");
     }
 
-    Booking booking = bookingRepository.findById(bookingId)
-        .orElseThrow(() -> new ResourceNotFoundException("Booking not found"));
-
+    // All checks passed - confirm booking atomically
     booking.setStatus(BookingStatus.CONFIRMED);
     booking.getSlot().setStatus(SlotStatus.BOOKED);
     bookingRepository.save(booking);

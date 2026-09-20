@@ -12,7 +12,8 @@ All migrations managed by Flyway (`src/main/resources/db/migration/`).
 users ──────────────────── bookings ────────── slots ────── stations
   │                           │                               │
   └── (role: ADMIN)       payments                    connector_types
-                                                           (enum)
+                                                    (validated string,
+                                                     backed by Java enum)
 ```
 
 ---
@@ -50,7 +51,7 @@ CREATE TABLE stations (
     latitude        DECIMAL(9,6)    NOT NULL,
     longitude       DECIMAL(9,6)    NOT NULL,
     description     TEXT,
-    total_slots     INT             NOT NULL DEFAULT 0,
+    total_slots     INT             NOT NULL DEFAULT 0,  -- Physical charger count, not time slots
     price_per_hour  DECIMAL(8,2)    NOT NULL,
     is_active       BOOLEAN         NOT NULL DEFAULT TRUE,
     created_at      TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
@@ -63,6 +64,8 @@ CREATE INDEX idx_stations_location ON stations(latitude, longitude);
 CREATE INDEX idx_stations_active ON stations(is_active) WHERE is_active = TRUE;
 ```
 
+**Note on `total_slots`:** This field represents the number of physical charging ports at the station (how many cars can charge simultaneously), not the count of generated time slot records. For example, a station with 8 physical chargers might have `total_slots = 8`, but hundreds of slot records in the `slots` table (8 chargers × multiple time slots per day × multiple days).
+
 ---
 
 ### connector_types
@@ -73,11 +76,13 @@ Stores which connector types each station supports. A station can have multiple.
 CREATE TABLE connector_types (
     id              BIGSERIAL PRIMARY KEY,
     station_id      BIGINT          NOT NULL REFERENCES stations(id) ON DELETE CASCADE,
-    connector_type  VARCHAR(50)     NOT NULL   -- CCS2 | TYPE2 | CHADEMO | GB_T
+    connector_type  VARCHAR(50)     NOT NULL   -- validated string, backed by Java enum: CCS2 | TYPE2 | CHADEMO | GB_T
 );
 
 CREATE INDEX idx_connector_station ON connector_types(station_id);
 ```
+
+**Note:** The `connector_type` column stores string values validated against a Java enum (`CCS2`, `TYPE2`, `CHADEMO`, `GB_T`). Validation happens at the API/DTO boundary to ensure only valid connector types are persisted.
 
 ---
 

@@ -75,6 +75,7 @@ Public. Find nearby stations within a radius.
 | `connectorType` | string | ❌ | CCS2, TYPE2, CHADEMO, GB_T |
 | `availableOnly` | boolean | ❌ | Default false |
 | `date` | date | ❌ | Filter slots by date, default today |
+| `afterTime` | string | ❌ | Only include slots starting after this time (HH:mm format, e.g. "18:00") |
 
 **Response 200:**
 ```json
@@ -90,8 +91,7 @@ Public. Find nearby stations within a radius.
       "pricePerHour": 12.50,
       "totalSlots": 10,
       "availableSlots": 7,
-      "connectorTypes": ["CCS2", "TYPE2"],
-      "rating": 4.3
+      "connectorTypes": ["CCS2", "TYPE2"]
     }
   ]
 }
@@ -156,7 +156,7 @@ Authenticated. Get slots for a station on a specific date.
 ## Bookings
 
 ### POST `/bookings`
-Authenticated. Reserve a slot and initiate payment flow.
+Authenticated. Reserve a slot and create a pending booking. Payment happens separately via `/payments/create-order`.
 
 **Request:**
 ```json
@@ -182,8 +182,7 @@ Authenticated. Reserve a slot and initiate payment flow.
     "name": "Loni Kalbhor Charging Hub",
     "address": "Railway Station Road, Loni Kalbhor, Pune"
   },
-  "totalAmount": 12.50,
-  "razorpayOrderId": "order_ABC123"
+  "totalAmount": 12.50
 }
 ```
 
@@ -202,7 +201,7 @@ Authenticated. Get the logged-in user's bookings.
 **Response 200:**
 ```json
 {
-  "bookings": [
+  "content": [
     {
       "id": 55,
       "status": "CONFIRMED",
@@ -213,7 +212,9 @@ Authenticated. Get the logged-in user's bookings.
     }
   ],
   "page": 0,
-  "totalPages": 1
+  "size": 20,
+  "totalElements": 42,
+  "totalPages": 3
 }
 ```
 
@@ -290,20 +291,16 @@ Authenticated. Called after Razorpay payment modal closes successfully. Verifies
 ## AI Chat
 
 ### POST `/ai/chat`
-Authenticated. Send a message to the AI assistant.
+Authenticated. Send a message to the AI assistant. The backend manages conversation history in Redis.
 
 **Request:**
 ```json
 {
-  "message": "Find me a CCS2 station near Hadapsar open after 6pm today",
-  "history": [
-    { "role": "user", "content": "Hi" },
-    { "role": "assistant", "content": "Hello! How can I help you find a charging station?" }
-  ]
+  "message": "Find me a CCS2 station near Hadapsar open after 6pm today"
 }
 ```
 
-`history` is sent from the frontend's in-memory chat store. The backend appends it to the Claude API call for context.
+**Note:** The `history` field has been removed. The backend now owns conversation state exclusively, storing it in Redis keyed by `userId`. The frontend's `chatStore` is display-only and does not send history back to the server.
 
 **Response 200:**
 ```json
@@ -368,6 +365,17 @@ This generates one slot per hour per day for the station. Existing slots are ski
 ### GET `/admin/bookings`
 Paginated list of all bookings with filters (`status`, `stationId`, `date`).
 
+**Response 200:**
+```json
+{
+  "content": [...],
+  "page": 0,
+  "size": 20,
+  "totalElements": 150,
+  "totalPages": 8
+}
+```
+
 ### GET `/admin/dashboard/stats`
 **Response 200:**
 ```json
@@ -378,6 +386,8 @@ Paginated list of all bookings with filters (`status`, `stationId`, `date`).
   "totalRevenue": 58420.00
 }
 ```
+
+**Note:** `totalRevenue` is calculated as `SUM(total_amount)` where `booking.status IN ('CONFIRMED', 'COMPLETED')`. Pending bookings are not included.
 
 ---
 

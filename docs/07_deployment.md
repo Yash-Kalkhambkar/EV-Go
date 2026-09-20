@@ -107,10 +107,16 @@ spec:
                   key: latest
       scaling:
         minInstanceCount: 0
-        maxInstanceCount: 10
+        maxInstanceCount: 1   # v1 uses in-memory STOMP broker - single instance required
 ```
 
-**Important:** Cloud Run instances are stateless. WebSocket connections (STOMP) need sticky sessions or an external message broker. For v1, use Cloud Run's built-in session affinity. For v2 at higher scale, introduce Redis Pub/Sub so any instance can broadcast to any subscriber.
+**WebSocket Scalability Note:** The `enableSimpleBroker("/topic")` configuration keeps subscriptions in-memory per instance. With multiple instances, a WebSocket message sent by instance A would not reach clients connected to instance B. For v1, we cap at one instance to ensure broadcast delivery works correctly.
+
+**Scaling path for v2:** Introduce Redis Pub/Sub as a message backplane so any instance can publish messages that reach all connected clients across all instances. This allows horizontal scaling while maintaining real-time broadcast functionality.
+
+**Important:** Cloud Run instances are stateless. WebSocket connections (STOMP) with in-memory broker require a single instance in v1. The config sets `maxInstanceCount: 1` to ensure all WebSocket clients connect to the same instance and receive broadcasts correctly.
+
+**Scaling path for v2:** Introduce Redis Pub/Sub as a message backplane to distribute WebSocket messages across multiple Cloud Run instances, allowing horizontal scaling while maintaining real-time functionality.
 
 ---
 

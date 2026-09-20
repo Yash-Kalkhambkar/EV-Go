@@ -1,233 +1,27 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  EV GO – Structured JSON Logging Configuration
-  Requirements:
-    22.1 – JSON log output with timestamp, level, logger, message, trace_id, span_id, user_id
-    22.2 – correlation_id included in every log entry
-    22.4 – sensitive data masking for passwords, tokens, payment details
-
-  Profiles:
-    dev        → console appender (JSON to stdout)
-    prod       → rolling file appender (JSON, tailed by Cloud Logging agent)
-    (default)  → console appender
+  EV GO – Simplified Logging Configuration (Development)
+  Using standard console appender for local development.
+  Production logging can be configured later.
 -->
-<configuration scan="true" scanPeriod="30 seconds">
+<configuration>
 
-    <!-- ================================================================
-         Properties
-         ================================================================ -->
-    <springProperty scope="context" name="APP_NAME" source="spring.application.name"
-                    defaultValue="ev-go-backend"/>
-    <springProperty scope="context" name="APP_ENV"  source="APP_ENV"
-                    defaultValue="local"/>
-    <springProperty scope="context" name="LOG_DIR"  source="LOG_DIR"
-                    defaultValue="logs"/>
-
-    <!-- ================================================================
-         Sensitive-data masking converter
-         Requirements: 22.3, 22.4, 22.5 – registered so %maskedMessage
-         can also be used in plain-text patterns (e.g. dev console).
-         The MaskingMessageJsonProvider uses the same logic for JSON output.
-         ================================================================ -->
-    <conversionRule conversionWord="maskedMessage"
-                    converterClass="com.evgo.filter.SensitiveDataMaskingConverter"/>
-
-    <!-- ================================================================
-         Shared encoder snippet – defined once, referenced by both appenders.
-
-         Using LoggingEventCompositeJsonEncoder so we can swap in our
-         MaskingMessageJsonProvider in place of the default MessageJsonProvider.
-         This ensures sensitive data is masked before the message reaches any
-         log sink (stdout or file).
-
-         MDC fields (trace_id, span_id, user_id, correlation_id) are written
-         by MdcJsonProvider. The OTel Java agent populates trace_id and span_id
-         automatically; MdcFilter populates correlation_id and user_id.
-
-         Requirements: 22.1 (JSON fields), 22.2 (correlation ID), 22.4 (masking)
-         ================================================================ -->
-
-    <!-- Console appender ─────────────────────────────────────────── -->
-    <appender name="CONSOLE_JSON" class="ch.qos.logback.core.ConsoleAppender">
-        <encoder class="net.logstash.logback.encoder.LoggingEventCompositeJsonEncoder">
-            <providers>
-                <!-- timestamp – Req 22.1 -->
-                <timestamp>
-                    <fieldName>timestamp</fieldName>
-                    <pattern>yyyy-MM-dd'T'HH:mm:ss.SSS'Z'</pattern>
-                    <timeZone>UTC</timeZone>
-                </timestamp>
-
-                <!-- log level -->
-                <logLevel>
-                    <fieldName>level</fieldName>
-                </logLevel>
-
-                <!-- logger name -->
-                <loggerName>
-                    <fieldName>logger</fieldName>
-                    <shortenedLoggerNameLength>36</shortenedLoggerNameLength>
-                </loggerName>
-
-                <!-- thread name -->
-                <threadName>
-                    <fieldName>thread</fieldName>
-                </threadName>
-
-                <!-- message with sensitive-data masking – Req 22.4 -->
-                <provider class="com.evgo.filter.MaskingMessageJsonProvider"/>
-
-                <!-- MDC: trace_id, span_id, user_id, correlation_id – Req 22.1, 22.2 -->
-                <mdc>
-                    <includeMdcKeyName>trace_id</includeMdcKeyName>
-                    <includeMdcKeyName>span_id</includeMdcKeyName>
-                    <includeMdcKeyName>user_id</includeMdcKeyName>
-                    <includeMdcKeyName>correlation_id</includeMdcKeyName>
-                    <includeMdcKeyName>booking_id</includeMdcKeyName>
-                    <includeMdcKeyName>station_id</includeMdcKeyName>
-                </mdc>
-
-                <!-- stack trace in ERROR logs – Req 22.5 -->
-                <throwableRootCauseClassName>
-                    <useSimpleClassName>false</useSimpleClassName>
-                </throwableRootCauseClassName>
-                <stackTrace>
-                    <fieldName>stack_trace</fieldName>
-                    <throwableConverter
-                            class="net.logstash.logback.stacktrace.ShortenedThrowableConverter">
-                        <maxDepthPerCause>20</maxDepthPerCause>
-                        <maxLength>4096</maxLength>
-                        <shortenedClassNameLength>36</shortenedClassNameLength>
-                        <rootCauseFirst>true</rootCauseFirst>
-                    </throwableConverter>
-                </stackTrace>
-
-                <!-- static context fields -->
-                <globalCustomFields>{"app":"${APP_NAME}","env":"${APP_ENV}"}</globalCustomFields>
-            </providers>
+    <!-- Console appender with simple pattern -->
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
         </encoder>
     </appender>
 
-    <!-- File appender (prod) – rolling JSON logs ────────────────── -->
-    <appender name="FILE_JSON" class="ch.qos.logback.core.rolling.RollingFileAppender">
-        <file>${LOG_DIR}/ev-go.log</file>
-        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
-            <!-- Daily rollover, keep 30 days – Req 22.7 (30-day retention) -->
-            <fileNamePattern>${LOG_DIR}/ev-go.%d{yyyy-MM-dd}.%i.log.gz</fileNamePattern>
-            <timeBasedFileNamingAndTriggeringPolicy
-                    class="ch.qos.logback.core.rolling.SizeAndTimeBasedFNATP">
-                <maxFileSize>100MB</maxFileSize>
-            </timeBasedFileNamingAndTriggeringPolicy>
-            <maxHistory>30</maxHistory>
-            <totalSizeCap>3GB</totalSizeCap>
-        </rollingPolicy>
-        <encoder class="net.logstash.logback.encoder.LoggingEventCompositeJsonEncoder">
-            <providers>
-                <timestamp>
-                    <fieldName>timestamp</fieldName>
-                    <pattern>yyyy-MM-dd'T'HH:mm:ss.SSS'Z'</pattern>
-                    <timeZone>UTC</timeZone>
-                </timestamp>
-                <logLevel>
-                    <fieldName>level</fieldName>
-                </logLevel>
-                <loggerName>
-                    <fieldName>logger</fieldName>
-                    <shortenedLoggerNameLength>36</shortenedLoggerNameLength>
-                </loggerName>
-                <threadName>
-                    <fieldName>thread</fieldName>
-                </threadName>
+    <!-- Logger overrides -->
+    <logger name="org.springframework.security" level="WARN"/>
+    <logger name="org.hibernate.SQL" level="WARN"/>
+    <logger name="com.zaxxer.hikari" level="INFO"/>
+    <logger name="com.evgo" level="INFO"/>
 
-                <!-- message with sensitive-data masking – Req 22.4 -->
-                <provider class="com.evgo.filter.MaskingMessageJsonProvider"/>
-
-                <!-- MDC fields – Req 22.1, 22.2 -->
-                <mdc>
-                    <includeMdcKeyName>trace_id</includeMdcKeyName>
-                    <includeMdcKeyName>span_id</includeMdcKeyName>
-                    <includeMdcKeyName>user_id</includeMdcKeyName>
-                    <includeMdcKeyName>correlation_id</includeMdcKeyName>
-                    <includeMdcKeyName>booking_id</includeMdcKeyName>
-                    <includeMdcKeyName>station_id</includeMdcKeyName>
-                </mdc>
-
-                <!-- stack traces in ERROR logs – Req 22.5 -->
-                <throwableRootCauseClassName>
-                    <useSimpleClassName>false</useSimpleClassName>
-                </throwableRootCauseClassName>
-                <stackTrace>
-                    <fieldName>stack_trace</fieldName>
-                    <throwableConverter
-                            class="net.logstash.logback.stacktrace.ShortenedThrowableConverter">
-                        <maxDepthPerCause>20</maxDepthPerCause>
-                        <maxLength>4096</maxLength>
-                        <shortenedClassNameLength>36</shortenedClassNameLength>
-                        <rootCauseFirst>true</rootCauseFirst>
-                    </throwableConverter>
-                </stackTrace>
-
-                <globalCustomFields>{"app":"${APP_NAME}","env":"${APP_ENV}"}</globalCustomFields>
-            </providers>
-        </encoder>
-    </appender>
-
-    <!-- ================================================================
-         Async wrappers – prevent I/O from blocking request threads
-         ================================================================ -->
-    <appender name="ASYNC_CONSOLE" class="ch.qos.logback.classic.AsyncAppender">
-        <appender-ref ref="CONSOLE_JSON"/>
-        <queueSize>512</queueSize>
-        <discardingThreshold>0</discardingThreshold>
-        <includeCallerData>false</includeCallerData>
-    </appender>
-
-    <appender name="ASYNC_FILE" class="ch.qos.logback.classic.AsyncAppender">
-        <appender-ref ref="FILE_JSON"/>
-        <queueSize>1024</queueSize>
-        <discardingThreshold>0</discardingThreshold>
-        <includeCallerData>false</includeCallerData>
-    </appender>
-
-    <!-- ================================================================
-         Logger overrides
-         ================================================================ -->
-    <!-- Reduce noise from framework internals -->
-    <logger name="org.springframework.security"          level="WARN"/>
-    <logger name="org.springframework.web"               level="INFO"/>
-    <logger name="org.hibernate.SQL"                     level="WARN"/>
-    <logger name="org.hibernate.type.descriptor.sql"     level="WARN"/>
-    <logger name="com.zaxxer.hikari"                     level="INFO"/>
-    <logger name="io.lettuce"                            level="WARN"/>
-    <logger name="org.redisson"                          level="WARN"/>
-    <logger name="io.github.resilience4j"                level="INFO"/>
-
-    <!-- Application loggers -->
-    <logger name="com.evgo"                              level="INFO"/>
-
-    <!-- ================================================================
-         Profile-specific root logger configuration
-         ================================================================ -->
-
-    <!-- dev profile: console only -->
-    <springProfile name="dev">
-        <root level="INFO">
-            <appender-ref ref="ASYNC_CONSOLE"/>
-        </root>
-    </springProfile>
-
-    <!-- prod profile: file only (Cloud Logging agent tails the file) -->
-    <springProfile name="prod">
-        <root level="INFO">
-            <appender-ref ref="ASYNC_FILE"/>
-        </root>
-    </springProfile>
-
-    <!-- default (no profile active): console -->
-    <springProfile name="!dev &amp; !prod">
-        <root level="INFO">
-            <appender-ref ref="ASYNC_CONSOLE"/>
-        </root>
-    </springProfile>
+    <!-- Root logger -->
+    <root level="INFO">
+        <appender-ref ref="CONSOLE"/>
+    </root>
 
 </configuration>

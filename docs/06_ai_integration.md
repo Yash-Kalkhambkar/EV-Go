@@ -96,7 +96,8 @@ List<Tool> tools = List.of(
                 "radiusKm",      Map.of("type", "integer", "description", "Search radius in km, default 10"),
                 "connectorType", Map.of("type", "string", "description", "Optional: CCS2, TYPE2, CHADEMO"),
                 "availableOnly", Map.of("type", "boolean", "description", "Only return stations with available slots"),
-                "date",          Map.of("type", "string", "description", "Date to check availability (YYYY-MM-DD)")
+                "date",          Map.of("type", "string", "description", "Date to check availability (YYYY-MM-DD)"),
+                "afterTime",     Map.of("type", "string", "description", "Only include slots starting after this time (HH:mm, e.g. '18:00')")
             ),
             "required", List.of("latitude", "longitude")
         ))
@@ -134,23 +135,23 @@ List<Tool> tools = List.of(
 Claude sometimes needs multiple tool calls to answer one question (e.g. "Can I cancel the booking I made for tomorrow?" requires first getting bookings, then cancelling). The execution loop handles this:
 
 ```java
-public ChatResponse chat(Long userId, String userMessage, List<ChatMessage> history) {
+public ChatResponse chat(Long userId, String userMessage) {
     String systemPrompt = buildSystemPrompt(userId);
-    List<ChatMessage> messages = new ArrayList<>(history);
-    messages.add(new ChatMessage("user", userMessage));
+    List<ChatMessage> history = conversationStore.getHistory(userId);
+    history.add(new ChatMessage("user", userMessage));
 
     List<StationDto> referencedStations = new ArrayList<>();
 
     // Loop — handles multi-turn tool use
     while (true) {
         ClaudeResponse response = claudeClient.complete(
-            systemPrompt, messages, tools
+            systemPrompt, history, tools
         );
 
         // If Claude finished with a text reply, we're done
         if (response.getStopReason().equals("end_turn")) {
-            messages.add(new ChatMessage("assistant", response.getText()));
-            conversationStore.saveHistory(userId, messages);
+            history.add(new ChatMessage("assistant", response.getText()));
+            conversationStore.saveHistory(userId, history);
 
             return ChatResponse.builder()
                 .reply(response.getText())
@@ -164,8 +165,8 @@ public ChatResponse chat(Long userId, String userMessage, List<ChatMessage> hist
             String toolResult = executeTool(toolUse, userId, referencedStations);
 
             // Add Claude's tool call + our result to the conversation
-            messages.add(new ChatMessage("assistant", response.getContent()));
-            messages.add(new ChatMessage("user", List.of(
+            history.add(new ChatMessage("assistant", response.getContent()));
+            history.add(new ChatMessage("user", List.of(
                 ToolResultBlock.of(toolUse.getId(), toolResult)
             )));
             // Loop again — Claude will process the result and either reply or call another tool
@@ -199,7 +200,7 @@ private String executeTool(ToolUseBlock toolUse, Long userId, List<StationDto> r
 
 ## Conversation History
 
-History is kept in Redis, keyed by userId, and expires after 2 hours of inactivity.
+History is kept in Redis, keyed by userId, and expires after 2 hours of inactivity. The backend owns conversation state exclusively.
 
 ```java
 // ConversationStore.java
@@ -230,7 +231,7 @@ public class ConversationStore {
 }
 ```
 
-Keeping history to 20 messages ensures the Claude API call stays well within token limits while maintaining enough context for multi-turn conversations.
+**Important:** The frontend's `chatStore` is purely a display cache (what's rendered in the chat panel). It does NOT send history back to the server. The backend calls `ConversationStore.getHistory(userId)`, appends the new user message, calls Claude, appends the assistant reply, and saves the updated history. This prevents history divergence when tool executions modify state.
 
 ---
 

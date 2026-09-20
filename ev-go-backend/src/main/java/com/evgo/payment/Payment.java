@@ -60,12 +60,6 @@ public class Payment {
     @Builder.Default
     private PaymentStatus status = PaymentStatus.CREATED;
 
-    @Column(name = "refund_amount", precision = 8, scale = 2)
-    private BigDecimal refundAmount;
-
-    @Column(name = "refund_status", length = 30)
-    private String refundStatus;
-
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;

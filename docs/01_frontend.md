@@ -268,7 +268,7 @@ The entry point. User lands here, map centers on their location, nearby stations
 └─────────────────────────────────────────────────┘
 ```
 
-On marker click → side panel slides in with `StationCard` (name, distance, available slots, connector types, rating). Click through → `/station/:id`.
+On marker click → side panel slides in with `StationCard` (name, distance, available slots, connector types). Click through → `/station/:id`.
 
 ### Station Detail
 
@@ -276,7 +276,7 @@ Full station info + live slot picker. Slots rendered as a grid, color-coded by s
 
 ```
 Station Name — Loni Kalbhor Charging Hub
-2.3 km away | CCS2, Type 2 | ⭐ 4.3
+2.3 km away | CCS2, Type 2
 
 [ Time slot grid ]
   09:00  10:00  11:00  12:00
