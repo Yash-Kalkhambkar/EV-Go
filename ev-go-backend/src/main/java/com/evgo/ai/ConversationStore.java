@@ -2,8 +2,8 @@ package com.evgo.ai;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Component;
 
@@ -19,7 +19,6 @@ import java.util.Map;
  */
 @Slf4j
 @Component
-@RequiredArgsConstructor
 public class ConversationStore {
 
     private static final String KEY_PREFIX = "ai:history:";
@@ -27,6 +26,13 @@ public class ConversationStore {
 
     private final RedisTemplate<String, String> redisTemplate;
     private final ObjectMapper objectMapper;
+
+    public ConversationStore(
+            @Qualifier("customStringRedisTemplate") RedisTemplate<String, String> redisTemplate,
+            ObjectMapper objectMapper) {
+        this.redisTemplate = redisTemplate;
+        this.objectMapper = objectMapper;
+    }
 
     public List<Map<String, Object>> getHistory(Long userId) {
         try {

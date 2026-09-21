@@ -17,5 +17,4 @@ DROP SEQUENCE IF EXISTS webhook_retry_jobs_id_seq CASCADE;
 DROP SEQUENCE IF EXISTS audit_logs_id_seq CASCADE;
 DROP SEQUENCE IF EXISTS refunds_id_seq CASCADE;
 
--- Comments
-COMMENT ON EXTENSION IF EXISTS plpgsql IS 'Ensure PL/pgSQL extension is available for future use';
+-- Note: plpgsql extension is enabled by default in modern PostgreSQL

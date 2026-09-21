@@ -10,8 +10,8 @@ import com.google.zxing.BarcodeFormat;
 import com.google.zxing.client.j2se.MatrixToImageWriter;
 import com.google.zxing.common.BitMatrix;
 import com.google.zxing.qrcode.QRCodeWriter;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
@@ -35,7 +35,6 @@ import java.util.concurrent.CompletableFuture;
  * </ul>
  */
 @Service
-@RequiredArgsConstructor
 @Slf4j
 public class ShortUrlServiceImpl implements ShortUrlService {
     
@@ -51,6 +50,17 @@ public class ShortUrlServiceImpl implements ShortUrlService {
     private static final int SHORT_CODE_LENGTH = 7;
     private static final String CACHE_KEY_PREFIX = "short_url:";
     private static final int QR_CODE_SIZE = 300;
+
+    public ShortUrlServiceImpl(
+            ShortUrlRepository shortUrlRepository,
+            BookingRepository bookingRepository,
+            UserRepository userRepository,
+            @Qualifier("customStringRedisTemplate") RedisTemplate<String, String> stringRedisTemplate) {
+        this.shortUrlRepository = shortUrlRepository;
+        this.bookingRepository = bookingRepository;
+        this.userRepository = userRepository;
+        this.stringRedisTemplate = stringRedisTemplate;
+    }
     
     @Override
     @Transactional

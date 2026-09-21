@@ -1,7 +1,7 @@
 package com.evgo.cache;
 
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Component;
 
@@ -21,7 +21,6 @@ import java.time.Duration;
  * Key pattern: {@code rate_limit:{endpoint}:{clientIp}}
  */
 @Component
-@RequiredArgsConstructor
 @Slf4j
 public class RateLimiter {
     
@@ -29,6 +28,10 @@ public class RateLimiter {
     
     private static final int MAX_REQUESTS_PER_MINUTE = 100;
     private static final Duration WINDOW_DURATION = Duration.ofMinutes(1);
+
+    public RateLimiter(@Qualifier("customStringRedisTemplate") RedisTemplate<String, String> stringRedisTemplate) {
+        this.stringRedisTemplate = stringRedisTemplate;
+    }
     
     /**
      * Check if request is allowed under rate limit.

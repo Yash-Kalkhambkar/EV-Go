@@ -9,8 +9,8 @@ import com.evgo.payment.dto.VerifyPaymentRequest;
 import com.evgo.slot.Slot;
 import com.evgo.slot.SlotRepository;
 import com.evgo.slot.SlotStatus;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
@@ -37,7 +37,6 @@ import java.util.HexFormat;
  */
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class PaymentServiceImpl implements PaymentService {
 
     private static final String HMAC_ALGORITHM = "HmacSHA256";
@@ -54,6 +53,17 @@ public class PaymentServiceImpl implements PaymentService {
     private final BookingRepository bookingRepository;
     private final SlotRepository slotRepository;
     private final RedisTemplate<String, String> redisTemplate;
+
+    public PaymentServiceImpl(
+            PaymentRepository paymentRepository,
+            BookingRepository bookingRepository,
+            SlotRepository slotRepository,
+            @Qualifier("customStringRedisTemplate") RedisTemplate<String, String> redisTemplate) {
+        this.paymentRepository = paymentRepository;
+        this.bookingRepository = bookingRepository;
+        this.slotRepository = slotRepository;
+        this.redisTemplate = redisTemplate;
+    }
 
     // =========================================================================
     // PaymentService – verifyPayment
