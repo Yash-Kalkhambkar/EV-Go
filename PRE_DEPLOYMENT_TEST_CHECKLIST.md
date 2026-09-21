@@ -8,13 +8,21 @@
 ## Prerequisites
 
 ### 1. Start PostgreSQL
+
+**⚠️ IMPORTANT:** If you have existing local dev data, **drop and recreate the database** before starting. The connector_types migration changed from many-to-many (with lookup table) to simple strings. Flyway will reject the new migration if the old one already ran.
+
 ```powershell
-# If using Docker:
+# If using Docker (clean start):
+docker stop evgo-postgres 2>$null
+docker rm evgo-postgres 2>$null
 docker run --name evgo-postgres -e POSTGRES_PASSWORD=evgo -e POSTGRES_USER=evgo -e POSTGRES_DB=evgo -p 5432:5432 -d postgres:15
 
-# Or use local PostgreSQL installation
-# Ensure database 'evgo' exists with user 'evgo' / password 'evgo'
+# Or if using local PostgreSQL:
+psql -U postgres -c "DROP DATABASE IF EXISTS evgo;"
+psql -U postgres -c "CREATE DATABASE evgo OWNER evgo;"
 ```
+
+**Why:** Commits `a7d5294` (refund removal) and `c64e8f4` (connector types simplification) changed V3, V5, V6 migrations in-place. Flyway checksums will mismatch if old versions already ran.
 
 ### 2. Start Redis
 ```powershell

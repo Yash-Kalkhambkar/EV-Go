@@ -4,7 +4,6 @@ com\evgo\station\dto\CreateStationRequest.class
 com\evgo\slot\SlotController.class
 com\evgo\slot\SlotService.class
 com\evgo\user\User$UserBuilder.class
-com\evgo\station\ConnectorType.class
 com\evgo\auth\dto\RegisterRequest.class
 com\evgo\filter\RateLimitFilter.class
 com\evgo\payment\Payment$PaymentBuilder.class
@@ -16,7 +15,6 @@ com\evgo\payment\PaymentStatus.class
 com\evgo\config\JwtTokenService.class
 com\evgo\websocket\WebSocketMessage.class
 com\evgo\exception\InvalidStateTransitionException.class
-com\evgo\station\ConnectorTypeRepository.class
 com\evgo\payment\PaymentServiceImpl.class
 com\evgo\websocket\BookingWebSocketHandler.class
 com\evgo\slot\dto\SlotDto.class
@@ -30,13 +28,13 @@ com\evgo\payment\Payment.class
 com\evgo\admin\AdminStationController.class
 com\evgo\exception\GlobalExceptionHandler.class
 com\evgo\slot\SlotStatus.class
+com\evgo\admin\AdminBookingQueryServiceImpl.class
 com\evgo\station\Station.class
 com\evgo\station\StationService.class
 com\evgo\booking\BookingQueryService.class
 com\evgo\station\StationController.class
 com\evgo\slot\SlotRepository.class
 com\evgo\payment\dto\CreateOrderResponse.class
-com\evgo\station\ConnectorType$ConnectorTypeBuilder.class
 com\evgo\ai\AIServiceImpl.class
 com\evgo\booking\BookingService.class
 com\evgo\admin\AdminStationQueryService.class
@@ -63,6 +61,7 @@ com\evgo\payment\dto\CreateOrderRequest.class
 com\evgo\slot\SlotServiceImpl.class
 com\evgo\websocket\WebSocketMessage$BookingEventData.class
 com\evgo\booking\BookingQueryServiceImpl.class
+com\evgo\admin\AdminBookingQueryService.class
 com\evgo\station\dto\StationDto.class
 com\evgo\booking\BookingController.class
 com\evgo\slot\Slot.class
@@ -81,6 +80,7 @@ com\evgo\station\StationRepository.class
 com\evgo\booking\BookingQueryServiceImpl$1.class
 com\evgo\shorturl\dto\ShortUrlDto.class
 com\evgo\payment\RazorpayServiceImpl.class
+com\evgo\admin\AdminBookingController.class
 com\evgo\shorturl\ShortUrl$ShortUrlBuilder.class
 com\evgo\cache\RateLimiter.class
 com\evgo\exception\PaymentFailedException.class
