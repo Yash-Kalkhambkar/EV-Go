@@ -1,22 +1,27 @@
-import { defineConfig } from '@tanstack/start/config'
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
 import viteTsConfigPaths from 'vite-tsconfig-paths'
 import tailwindcss from '@tailwindcss/vite'
 
 export default defineConfig({
-  vite: {
-    plugins: [
-      viteTsConfigPaths({
-        projects: ['./tsconfig.json'],
-      }),
-      tailwindcss(),
-    ],
-  },
+  plugins: [
+    react(),
+    viteTsConfigPaths({
+      projects: ['./tsconfig.json'],
+    }),
+    tailwindcss(),
+  ],
   server: {
-    preset: 'node-server',
-  },
-  routers: {
-    ssr: {
-      entry: './src/start.ts',
+    port: 8080,
+    proxy: {
+      '/api': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+      },
+      '/ws': {
+        target: 'ws://localhost:8080',
+        ws: true,
+      },
     },
   },
 })
