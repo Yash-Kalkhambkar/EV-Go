@@ -24,6 +24,12 @@ import java.util.List;
 public interface StationRepository extends JpaRepository<Station, Long> {
 
     /**
+     * Find station by ID with connector types eagerly loaded.
+     */
+    @Query("SELECT s FROM Station s LEFT JOIN FETCH s.connectorTypes WHERE s.id = :id")
+    Station findByIdWithConnectors(@Param("id") Long id);
+
+    /**
      * Returns all active stations within the given lat/lng bounding box.
      *
      * <p>The bounding box is computed from the user's location + search radius
@@ -38,6 +44,7 @@ public interface StationRepository extends JpaRepository<Station, Long> {
      */
     @Query("""
             SELECT s FROM Station s
+            LEFT JOIN FETCH s.connectorTypes
             WHERE s.latitude  BETWEEN :minLat AND :maxLat
               AND s.longitude BETWEEN :minLng AND :maxLng
               AND s.isActive = true

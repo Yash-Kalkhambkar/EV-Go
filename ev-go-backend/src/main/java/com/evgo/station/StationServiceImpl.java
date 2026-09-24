@@ -46,6 +46,7 @@ public class StationServiceImpl implements StationService {
     private static final double EARTH_RADIUS_KM = 6371.0;
     
     @Override
+    @Transactional(readOnly = true)
     @Cacheable(
             value = "stations",
             key = "T(java.lang.Math).round(#latitude * 100) + '_' + " +
@@ -92,8 +93,10 @@ public class StationServiceImpl implements StationService {
     @Override
     @Transactional(readOnly = true)
     public StationDto getById(Long id) {
-        Station station = stationRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Station", id));
+        Station station = stationRepository.findByIdWithConnectors(id);
+        if (station == null) {
+            throw new ResourceNotFoundException("Station", id);
+        }
         return toDto(station, null);
     }
     
@@ -139,8 +142,10 @@ public class StationServiceImpl implements StationService {
     @CacheEvict(value = "stations", allEntries = true)
     public StationDto updateStation(Long id, UpdateStationRequest request) {
         
-        Station station = stationRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Station", id));
+        Station station = stationRepository.findByIdWithConnectors(id);
+        if (station == null) {
+            throw new ResourceNotFoundException("Station", id);
+        }
         
         log.info("Updating station: id={}, name={}", id, station.getName());
         
@@ -185,8 +190,10 @@ public class StationServiceImpl implements StationService {
     @CacheEvict(value = "stations", allEntries = true)
     public void deleteStation(Long id) {
         
-        Station station = stationRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Station", id));
+        Station station = stationRepository.findByIdWithConnectors(id);
+        if (station == null) {
+            throw new ResourceNotFoundException("Station", id);
+        }
         
         station.setActive(false);
         stationRepository.save(station);

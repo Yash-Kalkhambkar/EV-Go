@@ -1,16 +1,17 @@
 package com.evgo.slot;
 
-import jakarta.persistence.LockModeType;
+import java.time.LocalDate;
+import java.time.LocalTime;
+import java.util.List;
+import java.util.Optional;
+
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
-import java.time.LocalDate;
-import java.time.LocalTime;
-import java.util.List;
-import java.util.Optional;
+import jakarta.persistence.LockModeType;
 
 /**
  * Spring Data JPA repository for {@link Slot} entities.
@@ -22,6 +23,12 @@ import java.util.Optional;
  */
 @Repository
 public interface SlotRepository extends JpaRepository<Slot, Long> {
+
+    /**
+     * Find slot by ID with station eagerly loaded.
+     */
+    @Query("SELECT s FROM Slot s JOIN FETCH s.station WHERE s.id = :id")
+    Optional<Slot> findByIdWithStation(@Param("id") Long id);
 
     /**
      * Loads a slot by ID with a {@code SELECT … FOR UPDATE} pessimistic write lock.
@@ -40,7 +47,7 @@ public interface SlotRepository extends JpaRepository<Slot, Long> {
      * Requirements: 1.1, 2.2
      */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("SELECT s FROM Slot s WHERE s.id = :id")
+    @Query("SELECT s FROM Slot s JOIN FETCH s.station WHERE s.id = :id")
     Optional<Slot> findByIdWithLock(@Param("id") Long id);
     
     /**
@@ -53,6 +60,7 @@ public interface SlotRepository extends JpaRepository<Slot, Long> {
      */
     @Query("""
             SELECT s FROM Slot s
+            JOIN FETCH s.station
             WHERE s.station.id = :stationId
               AND s.slotDate = :date
             ORDER BY s.startTime ASC
@@ -71,6 +79,7 @@ public interface SlotRepository extends JpaRepository<Slot, Long> {
      */
     @Query("""
             SELECT s FROM Slot s
+            JOIN FETCH s.station
             WHERE s.station.id = :stationId
               AND s.slotDate = :date
               AND s.status = com.evgo.slot.SlotStatus.AVAILABLE

@@ -70,7 +70,7 @@ public class SlotServiceImpl implements SlotService {
     @Override
     @Transactional(readOnly = true)
     public SlotDto getById(Long id) {
-        Slot slot = slotRepository.findById(id)
+        Slot slot = slotRepository.findByIdWithStation(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Slot", id));
         return toDto(slot);
     }
